@@ -54,6 +54,8 @@ enum ARWorldProjection {
         let poses = try JSONDecoder.standard.decode([ARCameraPoseSample].self, from: trajectoryData)
         guard let depth = depths.min(by: { abs($0.timeSeconds-timeSeconds) < abs($1.timeSeconds-timeSeconds) }),
               let pose = poses.min(by: { abs($0.timeSeconds-timeSeconds) < abs($1.timeSeconds-timeSeconds) }),
+              abs(depth.timeSeconds-timeSeconds) <= 0.75,
+              abs(pose.timeSeconds-timeSeconds) <= 0.25,
               pose.transform.count >= 16, pose.intrinsics.count >= 9 else { throw ProjectionError.missingSample }
 
         let sensorPoint = unrotate(normalizedVideoPoint, degrees: artifact.videoOrientationDegrees ?? 0)
