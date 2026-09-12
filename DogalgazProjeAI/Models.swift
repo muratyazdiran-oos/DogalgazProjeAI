@@ -25,6 +25,7 @@ struct GasProject: Identifiable, Codable, Hashable {
     var spatialCapture: SpatialCaptureState? = nil
     var arCaptureArtifact: ARCaptureArtifact? = nil
     var spatialObstacles: [SpatialObstacle]? = nil
+    var projectWorkflow: ProjectWorkflow? = nil
 
     init(
         id: UUID = UUID(),
