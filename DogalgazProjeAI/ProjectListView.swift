@@ -82,7 +82,7 @@ private struct ProjectRow: View {
                 Text(project.name).font(.headline)
                 Spacer()
                 Image(systemName: project.analysis == nil ? "video.badge.plus" : "checkmark.seal.fill")
-                    .foregroundStyle(project.analysis == nil ? .secondary : .green)
+                    .foregroundColor(project.analysis == nil ? Color.secondary : Color.green)
             }
             if !project.customerName.isEmpty { Text(project.customerName).font(.subheadline) }
             if !project.address.isEmpty {
