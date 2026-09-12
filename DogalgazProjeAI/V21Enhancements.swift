@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import CryptoKit
 import simd
 
 enum ProjectWorkflowStatus: String, Codable, CaseIterable, Identifiable {
@@ -147,6 +148,158 @@ struct CloudArtifactReference: Identifiable, Codable, Hashable {
     var sha256: String
     var byteCount: Int64
     var uploadedAt: Date
+}
+
+
+@MainActor
+final class CloudArtifactService: ObservableObject {
+    @Published var status = ""
+
+    private var baseURL: URL? { APIConfig.baseURL }
+    private var token: String? { KeychainStore.string(for: "teamAuthToken") }
+
+    struct UploadAck: Decodable {
+        let remoteID: String
+        let kind: String
+        let fileName: String
+        let sha256: String
+        let byteCount: Int64
+        let uploadedAt: Date
+    }
+
+    func upload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
+        guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts", relativeTo: baseURL) else {
+            throw ArtifactError.badURL
+        }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("artifact-\(UUID().uuidString).multipart")
+        FileManager.default.createFile(atPath: temp.path, contents: nil)
+        let out = try FileHandle(forWritingTo: temp)
+        defer { try? out.close(); try? FileManager.default.removeItem(at: temp) }
+
+        func write(_ text: String) throws {
+            if let data = text.data(using: .utf8) { try out.write(contentsOf: data) }
+        }
+        try write("--\(boundary)\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\n\(kind)\r\n")
+        try write("--\(boundary)\r\nContent-Disposition: form-data; name=\"fileName\"\r\n\r\n\(fileURL.lastPathComponent)\r\n")
+        try write("--\(boundary)\r\nContent-Disposition: form-data; name=\"artifact\"; filename=\"\(fileURL.lastPathComponent)\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+        let input = try FileHandle(forReadingFrom: fileURL)
+        defer { try? input.close() }
+        while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty { try out.write(contentsOf: chunk) }
+        try write("\r\n--\(boundary)--\r\n")
+        try out.synchronize()
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data,response) = try await URLSession.shared.upload(for: req, fromFile: temp)
+        guard let http=response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw ArtifactError.server }
+        let ack = try JSONDecoder.standard.decode(UploadAck.self, from: data)
+        return .init(remoteID: ack.remoteID, kind: ack.kind, fileName: ack.fileName, sha256: ack.sha256, byteCount: ack.byteCount, uploadedAt: ack.uploadedAt)
+    }
+
+    func download(_ artifact: CloudArtifactReference, projectID: UUID, destination: URL) async throws {
+        guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/\(artifact.remoteID)", relativeTo: baseURL) else { throw ArtifactError.badURL }
+        var req=URLRequest(url:url)
+        if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField:"Authorization") }
+        let (temp,response)=try await URLSession.shared.download(for:req)
+        guard let http=response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw ArtifactError.server }
+        let data=try Data(contentsOf:temp)
+        let hash=SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()
+        guard hash == artifact.sha256 else { throw ArtifactError.hashMismatch }
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: destination, options:[.atomic,.completeFileProtection])
+    }
+
+    enum ArtifactError: LocalizedError {
+        case badURL, server, hashMismatch
+        var errorDescription:String? {
+            switch self {
+            case .badURL:return "Backend adresi geçersiz."
+            case .server:return "Artifact sunucu işlemi başarısız."
+            case .hashMismatch:return "İndirilen dosyanın SHA-256 değeri eşleşmiyor."
+            }
+        }
+    }
+}
+
+struct CloudArtifactSyncView: View {
+    @State var project: GasProject
+    let onSave:(GasProject)->Void
+    @StateObject private var service=CloudArtifactService()
+    @State private var busy=false
+    @State private var message=""
+
+    var body: some View {
+        List {
+            Section {
+                Button("Yerel Kanıtları Buluta Gönder") { Task { await uploadAll() } }.disabled(busy)
+                Button("Buluttaki Kanıtları Bu Cihaza İndir") { Task { await downloadAll() } }.disabled(busy || (project.cloudArtifacts ?? []).isEmpty)
+                Text("AR video/depth/trajectory ve checklist fotoğrafları SHA-256 ile doğrulanır. Sunucuda ARTIFACT_STORAGE_DIR kalıcı volume olmalıdır.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Bulut Artifactleri") {
+                ForEach(project.cloudArtifacts ?? []) { a in
+                    VStack(alignment:.leading) {
+                        Text(a.fileName)
+                        Text("\(a.kind) • \(ByteCountFormatter.string(fromByteCount:a.byteCount,countStyle:.file)) • SHA \(a.sha256.prefix(12))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !message.isEmpty { Section("Durum"){Text(message)} }
+        }.navigationTitle("Kanıt Bulut Senkronu")
+    }
+
+    private func localArtifacts()->[(URL,String)] {
+        var items:[(URL,String)]=[]
+        if let ar=project.arCaptureArtifact {
+            let dir=project.arCaptureDirectory
+            items.append((dir.appendingPathComponent(ar.videoFileName),"ar-video"))
+            items.append((dir.appendingPathComponent(ar.trajectoryFileName),"ar-trajectory"))
+            if let d=ar.depthFileName { items.append((dir.appendingPathComponent(d),"ar-depth")) }
+        }
+        for r in project.fieldChecklist?.records ?? [] {
+            guard let name=r.evidenceFileName, let url=FieldEvidenceStore.url(projectID:project.id,fileName:name) else { continue }
+            items.append((url,"field-evidence"))
+        }
+        return items.filter{FileManager.default.fileExists(atPath:$0.0.path)}
+    }
+
+    private func uploadAll() async {
+        busy=true; defer{busy=false}
+        do {
+            var refs=project.cloudArtifacts ?? []
+            var uploaded=0
+            for (url,kind) in localArtifacts() {
+                if refs.contains(where:{$0.fileName==url.lastPathComponent}) { continue }
+                let ref=try await service.upload(fileURL:url,kind:kind,projectID:project.id)
+                refs.removeAll{$0.fileName==ref.fileName}
+                refs.append(ref);uploaded+=1
+            }
+            project.cloudArtifacts=refs
+            onSave(project)
+            message="\(uploaded) kanıt dosyası buluta gönderildi."
+        } catch { message=error.localizedDescription }
+    }
+
+    private func downloadAll() async {
+        busy=true; defer{busy=false}
+        do {
+            var count=0
+            for a in project.cloudArtifacts ?? [] {
+                let destination:URL
+                if a.kind.hasPrefix("ar-") { destination=project.arCaptureDirectory.appendingPathComponent(a.fileName) }
+                else {
+                    guard let url=FieldEvidenceStore.url(projectID:project.id,fileName:a.fileName) else { continue }
+                    destination=url
+                }
+                try await service.download(a,projectID:project.id,destination:destination);count+=1
+            }
+            message="\(count) kanıt dosyası indirildi ve SHA-256 doğrulandı."
+        } catch { message=error.localizedDescription }
+    }
 }
 
 struct ARRoomAlignmentView: View {
