@@ -47,6 +47,20 @@ const migrations = [
     CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, actor_email TEXT, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, request_id TEXT, metadata JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
     CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS project_versions (project_id UUID NOT NULL, version INTEGER NOT NULL, project JSONB NOT NULL, saved_by TEXT, saved_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(project_id,version));
+  `},
+  { version: 3, sql: `
+    CREATE TABLE IF NOT EXISTS project_artifacts (
+      remote_id UUID PRIMARY KEY,
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      byte_count BIGINT NOT NULL,
+      storage_path TEXT NOT NULL,
+      uploaded_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_artifacts_project ON project_artifacts(project_id, created_at DESC);
   `}
 ];
 async function runMigrations(db) {
