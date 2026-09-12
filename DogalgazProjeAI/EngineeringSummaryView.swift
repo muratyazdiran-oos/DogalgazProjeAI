@@ -17,7 +17,7 @@ struct EngineeringSummaryView: View {
                     Spacer()
                     Text(settings.verifiedByEngineer ? "Profil doğrulandı" : "Ön hesap")
                         .font(.caption.bold())
-                        .foregroundStyle(settings.verifiedByEngineer ? .green : .orange)
+                        .foregroundColor(settings.verifiedByEngineer ? Color.green : Color.orange)
                 }
 
                 LabeledContent("Toplam cihaz gücü", value: String(format: "%.1f kW", summary.totalLoadKW))
@@ -31,7 +31,7 @@ struct EngineeringSummaryView: View {
                 Text("Hidrolik Ön Kontrol").font(.subheadline.bold())
                 Label(hydraulic.message, systemImage: hydraulic.available ? "waveform.path.ecg" : "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(hydraulic.available ? .primary : .orange)
+                    .foregroundColor(hydraulic.available ? Color.primary : Color.orange)
 
                 if let drop = hydraulic.criticalPressureDropMbar {
                     LabeledContent("Kritik hat Δp", value: String(format: "%.3f mbar", drop))
