@@ -514,11 +514,12 @@ struct Project3DViewer: View {
 
 struct TeamDashboardPayload: Decodable {
     struct Member: Decodable, Identifiable { var id: String { email }; let email: String; let role: String; let name: String? }
-    struct ProjectItem: Decodable, Identifiable { let id: String; let name: String; let version: Int; let updatedAt: String?; let ownerEmail: String }
+    struct ProjectItem: Decodable, Identifiable { let id: String; let name: String; let version: Int; let updatedAt: String?; let ownerEmail: String; let status: String?; let assignedToEmail: String?; let dueDate: String? }
     let teamName: String
     let members: [Member]
     let projects: [ProjectItem]
     let countsByRole: [String:Int]
+    let countsByStatus: [String:Int]?
 }
 
 @MainActor final class TeamDashboardService: ObservableObject {
@@ -552,9 +553,10 @@ struct EnterpriseDashboardView: View {
                         LabeledContent("Üye", value: "\(d.members.count)")
                         LabeledContent("Proje", value: "\(d.projects.count)")
                         ForEach(d.countsByRole.keys.sorted(), id: \.self) { role in LabeledContent(role, value: "\(d.countsByRole[role] ?? 0)") }
+                        ForEach((d.countsByStatus ?? [:]).keys.sorted(), id: \.self) { status in LabeledContent("Durum • \(status)", value: "\(d.countsByStatus?[status] ?? 0)") }
                     }
                     Section("Üyeler") { ForEach(d.members) { member in HStack { VStack(alignment: .leading) { Text(member.name ?? member.email); Text(member.email).font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(member.role).font(.caption) } } }
-                    Section("Projeler") { ForEach(d.projects) { item in VStack(alignment: .leading) { Text(item.name); Text("v\(item.version) • \(item.ownerEmail)").font(.caption).foregroundStyle(.secondary) } } }
+                    Section("Projeler") { ForEach(d.projects) { item in VStack(alignment: .leading) { Text(item.name); Text("v\(item.version) • \(item.status ?? "draft") • \(item.assignedToEmail ?? item.ownerEmail)").font(.caption).foregroundStyle(.secondary); if let due = item.dueDate { Text("Teslim: \(due)").font(.caption2).foregroundStyle(.secondary) } } } }
                 }
                 if let error = service.error { Text(error).foregroundStyle(.red) }
                 Button("Yenile") { Task { await service.load(teamID: teamID) } }
