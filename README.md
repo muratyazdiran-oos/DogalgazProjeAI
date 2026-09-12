@@ -1,26 +1,28 @@
-# DogalgazProjeAI v2.1 Final Candidate
+# DogalgazProjeAI v2.2 Final Candidate
 
-SwiftUI iOS uygulaması + Node/Gemini backend. Video analizinden 2B tesisat taslağı, LiDAR/manuel gerçek ölçü, AR depth/trajectory, 3B tesisat, cihaz marka-model adayları, hidrolik ön kontrol, PDF/DXF/JSON çıktı, revizyon, teklif, onay ve ekip/bulut senkronizasyonu içerir.
+SwiftUI iOS uygulaması + Node/Gemini backend. Video analizinden 2B tesisat taslağı, RoomPlan/LiDAR gerçek ölçü, AR depth/trajectory, AR↔RoomPlan hizalama, 3B tesisat, mühendislik ön kontrolü, PDF/DXF, ekip/bulut ve kanıt artifact senkronizasyonu içerir.
 
-## v2.1 öne çıkanlar
-- Gerçek AR saha videosu + kamera pozu/intrinsics + örneklenmiş sceneDepth verisi.
-- AI cihaz zaman/bounding-box çıktısını AR dünya koordinatına bağlama altyapısı.
-- Boru başlangıç/bitiş kotu ve cihaz kotu; 3B görünüm ve DXF Z koordinatları.
-- RoomPlan duvar/açıklıkları ve manuel kolon/şaft/baca/dolap/yasak bölge engelleri.
-- Akıllı rota manuel engellerden de kaçınır.
-- Doğrulanmış mühendislik limitlerinden ön boru çapı önerisi.
-- OCR + QR/barkod cihaz etiketi okuma.
-- Saha kanıtlarında SHA-256 bütünlük izi.
-- AR kayıt kalite/tutarlılık analizi ve aktif oturumu koruyan temizlik.
-- Firma dashboardu, PostgreSQL optimistic locking, audit ve offline sync.
+## v2.2 öne çıkanlar
+- AI cihaz bounding-box alanında median sceneDepth ile daha dayanıklı 3B AR konumu.
+- İki fiziksel referans noktasıyla AR dünya koordinatı ↔ RoomPlan metre koordinatı similarity hizalaması.
+- Boru hidrolik hesabında nominal çap yerine gerçek/hesaplanmış iç çap desteği.
+- Malzemeye bağlı boru ölçü kataloğu ve tüm ağı birlikte yeniden hesaplayan global çap önerisi.
+- AI, gerçek ölçek yoksa boru metresi uydurmaz; lengthMeters=0 bırakır ve RoomPlan/LiDAR metreye çevirir.
+- Kolon/şaft/yasak bölge rotasında yükseklik aralığı dikkate alınır.
+- Batch sync yeni proje oluştururken takım üyeliği zorunlu.
+- Production AI endpointinde APP_API_TOKEN zorunlu.
+- AR video/depth/trajectory ve saha fotoğrafları için yetkili artifact upload/download, PostgreSQL manifesti ve SHA-256 doğrulaması.
+- Kanıt bulut senkron ekranı.
+- iOS 2.2.0 build 22 / backend API 2.2.0.
 
-## Güvenlik / mühendislik sınırı
-Uygulama resmî dağıtım şirketi onayı vermez. Kural değerleri yalnız doğrulanmış profil olarak girilmelidir. AI cihaz/model, rota ve çap önerileri yetkili mühendis doğrulaması olmadan kesin/resmî kabul edilmez. GasLine entegrasyonu doğrulanmış katalog eşlemeleri + DXF aktarımıdır; kapalı native GasLine formatı taklit edilmez.
+## Mühendislik sınırı
+Çap/rota/AI önerileri resmî proje kararı değildir. Dağıtım şirketi değerleri yalnız doğrulanmış kural profiliyle uygulanır. Yetkili mühendis doğrulaması zorunludur.
 
-## Backend
-`backend/.env.example` temel alınır. AI için `GEMINI_API_KEY`; ekip/bulut için `TEAM_AUTH_SECRET` ve production kullanımında PostgreSQL gereklidir. Secret değerleri repoya commit edilmemelidir.
-
-## Sürüm
-- iOS: 2.1.0 (build 21)
-- Backend API: 2.1.0
-- Deployment target: iOS 17+
+## Production
+- HTTPS
+- güçlü TEAM_AUTH_SECRET
+- APP_API_TOKEN
+- PostgreSQL
+- kalıcı ARTIFACT_STORAGE_DIR volume
+- düzenli veritabanı ve artifact yedeği
+zorunludur.
