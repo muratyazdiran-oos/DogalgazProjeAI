@@ -3,6 +3,7 @@ import PhotosUI
 import Vision
 import UIKit
 import Foundation
+import CryptoKit
 
 // MARK: - v1.8 Field checklist + evidence
 
@@ -41,6 +42,7 @@ struct FieldChecklistRecord: Identifiable, Codable, Hashable {
     var note: String = ""
     var evidenceFileName: String? = nil
     var capturedAt: Date? = nil
+    var evidenceSHA256: String? = nil
 }
 
 struct FieldChecklist: Codable, Hashable {
@@ -66,6 +68,11 @@ enum FieldEvidenceStore {
     }
     static func url(projectID: UUID, fileName: String) -> URL? {
         try? directory(projectID: projectID).appendingPathComponent(fileName)
+    }
+    static func sha256(projectID: UUID, fileName: String) -> String? {
+        guard let url = url(projectID: projectID, fileName: fileName),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
     enum EvidenceError: LocalizedError { case invalidImage; var errorDescription: String? { "Geçerli fotoğraf okunamadı." } }
 }
@@ -115,6 +122,24 @@ enum ApplianceLabelOCR {
             .lowercased()
             .replacingOccurrences(of: "[^a-z0-9]+", with: " ", options: .regularExpression)
     }
+    static func recognizeBarcodes(_ data: Data) async throws -> [String] {
+        guard let image = UIImage(data: data), let cgImage = image.cgImage else { throw OCRError.invalidImage }
+        return try await withCheckedThrowingContinuation { continuation in
+            let request = VNDetectBarcodesRequest { request, error in
+                if let error { continuation.resume(throwing: error); return }
+                let values = (request.results as? [VNBarcodeObservation] ?? [])
+                    .compactMap(\.payloadStringValue)
+                    .filter { !$0.isEmpty }
+                continuation.resume(returning: values)
+            }
+            request.symbologies = [.qr, .ean13, .ean8, .code128, .code39, .upce, .dataMatrix]
+            DispatchQueue.global(qos: .userInitiated).async {
+                do { try VNImageRequestHandler(cgImage: cgImage).perform([request]) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
     enum OCRError: LocalizedError { case invalidImage; var errorDescription: String? { "Etiket fotoğrafı okunamadı." } }
 }
 
@@ -233,7 +258,9 @@ struct ApplianceOCRView: View {
         busy = true; defer { busy = false }
         do {
             guard let data = try await item.loadTransferable(type: Data.self), let device = selectedDevice else { throw ApplianceLabelOCR.OCRError.invalidImage }
-            recognizedText = try await ApplianceLabelOCR.recognize(data)
+            let text = try await ApplianceLabelOCR.recognize(data)
+            let codes = (try? await ApplianceLabelOCR.recognizeBarcodes(data)) ?? []
+            recognizedText = ([text] + codes.map { "KOD: \($0)" }).filter { !$0.isEmpty }.joined(separator: "\n")
             matches = ApplianceLabelOCR.matches(text: recognizedText, type: device.type)
         } catch { self.error = error.localizedDescription }
     }
@@ -280,7 +307,7 @@ struct FieldChecklistView: View {
     @ViewBuilder private func checklistRow(_ kind: FieldChecklistItemKind) -> some View {
         let record = (project.fieldChecklist ?? FieldChecklist()).records.first(where: { $0.kind == kind }) ?? .init(kind: kind)
         VStack(alignment: .leading, spacing: 8) {
-            HStack { Image(systemName: record.completed ? "checkmark.circle.fill" : kind.systemImage); Text(kind.title); Spacer(); if record.evidenceFileName != nil { Image(systemName: "photo.fill").foregroundStyle(.secondary) } }
+            HStack { Image(systemName: record.completed ? "checkmark.circle.fill" : kind.systemImage); Text(kind.title); Spacer(); if record.evidenceFileName != nil { Image(systemName: record.evidenceSHA256 == nil ? "photo.fill" : "checkmark.shield.fill").foregroundStyle(.secondary) } }
             PhotosPicker(selection: binding(for: kind), matching: .images) { Label(record.evidenceFileName == nil ? "Fotoğraf Ekle" : "Fotoğrafı Değiştir", systemImage: "camera") }.font(.caption)
             Toggle("Tamamlandı", isOn: Binding(get: { record.completed }, set: { setCompleted(kind, $0) }))
         }.padding(.vertical, 4)
@@ -292,7 +319,8 @@ struct FieldChecklistView: View {
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else { throw FieldEvidenceStore.EvidenceError.invalidImage }
             let name = try FieldEvidenceStore.saveJPEG(data, projectID: project.id, kind: kind)
-            mutateRecord(kind) { $0.evidenceFileName = name; $0.capturedAt = .now; $0.completed = true }
+            let hash = FieldEvidenceStore.sha256(projectID: project.id, fileName: name)
+            mutateRecord(kind) { $0.evidenceFileName = name; $0.evidenceSHA256 = hash; $0.capturedAt = .now; $0.completed = true }
         } catch { self.error = error.localizedDescription }
     }
     private func setCompleted(_ kind: FieldChecklistItemKind, _ value: Bool) { mutateRecord(kind) { $0.completed = value } }
