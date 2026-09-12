@@ -198,12 +198,27 @@ enum PDFExporter {
 
         var right: [String] = ["KURAL / ONAY"]
         if let rule = project.ruleProfile {
-            right += ["• \(rule.authority)", "• \(rule.title) / \(rule.revision)", "• Kaynak SHA: \(rule.sourceDocumentHashSHA256.map { String($0.prefix(16)) } ?? "—")", "• Mühendis doğrulaması: \(rule.engineerVerified ? "evet" : "hayır")"]
-        } else { right.append("• Kural profili yok") }
-        right += ["", "AR SAHA KAYDI"]
+            right.append("• \(rule.authority)")
+            right.append("• \(rule.title) / \(rule.revision)")
+            let sourceHash = rule.sourceDocumentHashSHA256.map { String($0.prefix(16)) } ?? "—"
+            right.append("• Kaynak SHA: \(sourceHash)")
+            let verifiedText = rule.engineerVerified ? "evet" : "hayır"
+            right.append("• Mühendis doğrulaması: \(verifiedText)")
+        } else {
+            right.append("• Kural profili yok")
+        }
+        right.append("")
+        right.append("AR SAHA KAYDI")
         if let ar = project.arCaptureArtifact {
-            right += ["• Oturum: \(ar.sessionID.uuidString.prefix(8))", "• \(ar.frameCount) kare / \(String(format: "%.1f", ar.durationSeconds)) sn", "• Depth kare: \(ar.depthFrameCount)", "• Depth dosyası: \(ar.depthFileName == nil ? "yok" : "var")"]
-        } else { right.append("• AR kaydı yok") }
+            right.append("• Oturum: \(ar.sessionID.uuidString.prefix(8))")
+            let durationText = String(format: "%.1f", ar.durationSeconds)
+            right.append("• \(ar.frameCount) kare / \(durationText) sn")
+            right.append("• Depth kare: \(ar.depthFrameCount)")
+            let depthText = ar.depthFileName == nil ? "yok" : "var"
+            right.append("• Depth dosyası: \(depthText)")
+        } else {
+            right.append("• AR kaydı yok")
+        }
         right += ["", "SAHA KANITLARI"]
         for record in (project.fieldChecklist?.records ?? []).filter({ $0.evidenceFileName != nil }).prefix(10) {
             right.append("• \(record.kind.title) • SHA \(record.evidenceSHA256.map { String($0.prefix(12)) } ?? "—")")
