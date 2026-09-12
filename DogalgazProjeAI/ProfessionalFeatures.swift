@@ -315,9 +315,9 @@ enum DXFExporter {
             let m = map.meters(p)
             return (m.x * 1000, -m.y * 1000)
         }
-        func line(_ a: Point2D, _ b: Point2D, layer: String) {
+        func line(_ a: Point2D, _ b: Point2D, layer: String, z1: Double = 0, z2: Double = 0) {
             let pa = mm(a), pb = mm(b)
-            dxf += "0\nLINE\n8\n\(layer)\n10\n\(pa.x)\n20\n\(pa.y)\n30\n0\n11\n\(pb.x)\n21\n\(pb.y)\n31\n0\n"
+            dxf += "0\nLINE\n8\n\(layer)\n10\n\(pa.x)\n20\n\(pa.y)\n30\n\(z1 * 1000)\n11\n\(pb.x)\n21\n\(pb.y)\n31\n\(z2 * 1000)\n"
         }
         func text(_ value: String, at p: Point2D, layer: String, height: Double = 180) {
             let q = mm(p)
@@ -337,7 +337,10 @@ enum DXFExporter {
         }
 
         for pipe in analysis.pipes {
-            line(pipe.start, pipe.end, layer: "PIPE")
+            let floorBase = project.floors?.first(where: { $0.id == pipe.floorID }).map { Double($0.level) * max(project.roomScan?.heightMeters ?? 3.0, 2.2) } ?? 0
+            let z1 = floorBase + (pipe.startElevationM ?? 0)
+            let z2 = floorBase + (pipe.endElevationM ?? pipe.startElevationM ?? 0)
+            line(pipe.start, pipe.end, layer: "PIPE", z1: z1, z2: z2)
             let mid = Point2D(x: (pipe.start.x + pipe.end.x) / 2, y: (pipe.start.y + pipe.end.y) / 2)
             let diameter = pipe.diameterMM > 0 ? "Ø\(pipe.diameterMM)" : "Ø?"
             text("\(diameter)  \(String(format: "%.2f", pipe.lengthMeters)) m", at: mid, layer: "PIPE_TEXT", height: 140)
@@ -354,7 +357,9 @@ enum DXFExporter {
 
         for device in analysis.devices {
             let p = mm(device.position)
-            dxf += "0\nINSERT\n8\n\(deviceLayer(device.type))\n2\n\(blockName(device.type))\n10\n\(p.x)\n20\n\(p.y)\n30\n0\n41\n1\n42\n1\n43\n1\n50\n0\n"
+            let floorBase = project.floors?.first(where: { $0.id == device.floorID }).map { Double($0.level) * max(project.roomScan?.heightMeters ?? 3.0, 2.2) } ?? 0
+            let z = floorBase + (device.elevationM ?? 0)
+            dxf += "0\nINSERT\n8\n\(deviceLayer(device.type))\n2\n\(blockName(device.type))\n10\n\(p.x)\n20\n\(p.y)\n30\n\(z * 1000)\n41\n1\n42\n1\n43\n1\n50\n0\n"
             text(device.label, at: Point2D(x: device.position.x + 0.008, y: device.position.y - 0.008), layer: "DEVICE_TEXT", height: 150)
         }
 
@@ -429,6 +434,11 @@ struct ProfessionalToolsView: View {
                 NavigationLink("Cihaz Etiketi OCR") { ApplianceOCRView(project: project, onSave: save) }
                 NavigationLink("Video + LiDAR Ortak Oturum") { SpatialCaptureStatusView(project: project, onSave: save) }
                 NavigationLink("Gerçek AR Saha Kaydı") { ARFieldCaptureView(project: project, onSave: save) }
+                NavigationLink("AR Kayıt Tanılama") { ARCaptureDiagnosticsView(project: project) }
+                NavigationLink("AI → AR 3B Eşleme") { ARWorldMappingView(project: project, onSave: save) }
+                NavigationLink("3B Kot Düzenleme") { ElevationEditorView(project: project, onSave: save) }
+                NavigationLink("Kolon / Şaft / Engel") { SpatialObstacleEditorView(project: project, onSave: save) }
+                NavigationLink("Boru Çapı Önerisi") { PipeSizingAdvisorView(project: project, onSave: save) }
                 NavigationLink("3B Tesisat Görünümü") { Project3DViewer(project: project) }
                 NavigationLink("Saha Checklist") { FieldChecklistView(project: project, onSave: save) }
                 NavigationLink("Hata / İyileştirme Merkezi") { ImprovementCenterView(project: project, onSave: save) }
