@@ -55,11 +55,35 @@ struct RoomPlanScannerView: View {
     }
 }
 
+private final class RoomCaptureCoordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
+    weak var captureView: RoomCaptureView?
+    var didRequestStop = false
+    private let completion: (Result<CapturedRoom, Error>) -> Void
+
+    init(completion: @escaping (Result<CapturedRoom, Error>) -> Void) {
+        self.completion = completion
+        super.init()
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
+        if let error { completion(.failure(error)) }
+    }
+
+    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
+        error == nil
+    }
+
+    func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
+        if let error { completion(.failure(error)); return }
+        completion(.success(processedResult))
+    }
+}
+
 private struct RoomCaptureRepresentable: UIViewRepresentable {
     @Binding var isScanning: Bool
     let completion: (Result<CapturedRoom, Error>) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(completion: completion) }
+    func makeCoordinator() -> RoomCaptureCoordinator { RoomCaptureCoordinator(completion: completion) }
 
     func makeUIView(context: Context) -> RoomCaptureView {
         let view = RoomCaptureView(frame: .zero)
@@ -80,31 +104,8 @@ private struct RoomCaptureRepresentable: UIViewRepresentable {
         }
     }
 
-    static func dismantleUIView(_ uiView: RoomCaptureView, coordinator: Coordinator) {
+    static func dismantleUIView(_ uiView: RoomCaptureView, coordinator: RoomCaptureCoordinator) {
         uiView.captureSession.stop()
-    }
-
-    final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
-        weak var captureView: RoomCaptureView?
-        var didRequestStop = false
-        private let completion: (Result<CapturedRoom, Error>) -> Void
-
-        init(completion: @escaping (Result<CapturedRoom, Error>) -> Void) {
-            self.completion = completion
-        }
-
-        func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
-            if let error { completion(.failure(error)) }
-        }
-
-        func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
-            error == nil
-        }
-
-        func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-            if let error { completion(.failure(error)); return }
-            completion(.success(processedResult))
-        }
     }
 }
 
