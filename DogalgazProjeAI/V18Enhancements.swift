@@ -74,6 +74,10 @@ enum FieldEvidenceStore {
               let data = try? Data(contentsOf: url) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
+    static func verify(projectID: UUID, fileName: String, expectedSHA256: String?) -> Bool? {
+        guard let expectedSHA256, let actual = sha256(projectID: projectID, fileName: fileName) else { return nil }
+        return actual == expectedSHA256
+    }
     enum EvidenceError: LocalizedError { case invalidImage; var errorDescription: String? { "Geçerli fotoğraf okunamadı." } }
 }
 
