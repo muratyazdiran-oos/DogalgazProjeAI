@@ -2,6 +2,73 @@ import SwiftUI
 import Foundation
 import simd
 
+enum ProjectWorkflowStatus: String, Codable, CaseIterable, Identifiable {
+    case draft, fieldVisit, engineeringReview, waitingCustomer, approved, completed
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .draft: return "Taslak"
+        case .fieldVisit: return "Saha Keşfi"
+        case .engineeringReview: return "Mühendis İncelemesi"
+        case .waitingCustomer: return "Müşteri Bekleniyor"
+        case .approved: return "Onaylandı"
+        case .completed: return "Tamamlandı"
+        }
+    }
+}
+
+struct ProjectWorkflow: Codable, Hashable {
+    var status: ProjectWorkflowStatus = .draft
+    var assignedToEmail: String = ""
+    var dueDate: Date? = nil
+    var note: String = ""
+    var updatedAt: Date = .now
+}
+
+struct ProjectWorkflowView: View {
+    @State var project: GasProject
+    let onSave: (GasProject) -> Void
+    @State private var dueEnabled = false
+
+    var body: some View {
+        Form {
+            Section("İş Akışı") {
+                Picker("Durum", selection: workflowBinding(\.status)) {
+                    ForEach(ProjectWorkflowStatus.allCases) { Text($0.title).tag($0) }
+                }
+                TextField("Atanan e-posta", text: workflowBinding(\.assignedToEmail))
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                Toggle("Teslim tarihi", isOn: $dueEnabled)
+                if dueEnabled {
+                    DatePicker("Tarih", selection: dueDateBinding(), displayedComponents: [.date])
+                }
+                TextField("Not", text: workflowBinding(\.note), axis: .vertical)
+            }
+            Section {
+                Button("İş Akışını Kaydet") {
+                    var w = project.projectWorkflow ?? ProjectWorkflow()
+                    if !dueEnabled { w.dueDate = nil }
+                    w.updatedAt = .now
+                    project.projectWorkflow = w
+                    onSave(project)
+                }
+            }
+        }
+        .navigationTitle("Proje İş Akışı")
+        .onAppear { dueEnabled = project.projectWorkflow?.dueDate != nil }
+    }
+
+    private func workflowBinding<T>(_ kp: WritableKeyPath<ProjectWorkflow,T>) -> Binding<T> {
+        Binding(get: { (project.projectWorkflow ?? ProjectWorkflow())[keyPath: kp] },
+                set: { value in var w = project.projectWorkflow ?? ProjectWorkflow(); w[keyPath: kp] = value; project.projectWorkflow = w })
+    }
+    private func dueDateBinding() -> Binding<Date> {
+        Binding(get: { project.projectWorkflow?.dueDate ?? .now },
+                set: { value in var w = project.projectWorkflow ?? ProjectWorkflow(); w.dueDate = value; project.projectWorkflow = w })
+    }
+}
+
 struct BoundingBox2D: Codable, Hashable {
     var x: Double
     var y: Double
