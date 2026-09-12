@@ -268,9 +268,10 @@ extension GasProject {
             let ruleProfile: RuleProfileDocument?
             let spatialObstacles: [SpatialObstacle]?
             let arRoomAlignment: ARRoomAlignment?
+            let fieldChecklist: FieldChecklist?
             let evidenceManifest: [String]
         }
-        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, spatialObstacles: spatialObstacles, arRoomAlignment: arRoomAlignment, evidenceManifest: evidenceManifestForApproval)
+        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, spatialObstacles: spatialObstacles, arRoomAlignment: arRoomAlignment, fieldChecklist: fieldChecklist, evidenceManifest: evidenceManifestForApproval)
         guard let data = try? JSONEncoder.pretty.encode(payload) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
