@@ -25,3 +25,16 @@ test('optimistic locking protects project updates', () => {
   assert.match(source, /WHERE id=\$4 AND version=\$5/);
   assert.match(source, /status\(409\)/);
 });
+
+
+test('AI spatial metadata contract is present', () => {
+  assert.ok(source.includes('videoTimeSeconds'));
+  assert.ok(source.includes('videoBoundingBox'));
+  assert.ok(source.includes('bounding box') || source.includes('bounding-box') || source.includes('videoBoundingBox'));
+});
+
+test('team dashboard exposes project workflow fields', () => {
+  assert.ok(source.includes('assignedToEmail'));
+  assert.ok(source.includes('dueDate'));
+  assert.ok(source.includes('countsByStatus'));
+});
