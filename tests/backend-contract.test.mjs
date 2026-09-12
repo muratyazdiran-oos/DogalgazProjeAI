@@ -4,8 +4,8 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../backend/server.js', import.meta.url), 'utf8');
 
-test('v2.2 API and critical production routes are present', () => {
-  assert.ok(source.includes('const apiVersion = "2.2.0"'));
+test('v2.3 API and critical production routes are present', () => {
+  assert.ok(source.includes('const apiVersion = "2.3.0"'));
   for (const route of ['/v1/projects/analyze-video','/v1/team-projects/sync-batch','/v1/teams/:id/dashboard','/v1/auth/logout','/v1/auth/change-password']) assert.ok(source.includes(route));
 });
 
@@ -54,4 +54,23 @@ test('artifact routes require team auth and hash artifacts', () => {
 
 test('production requires APP_API_TOKEN', () => {
   assert.ok(source.includes('Production AI endpoint için APP_API_TOKEN zorunludur.'));
+});
+
+
+test('S3-compatible artifact storage is available', () => {
+  assert.ok(source.includes('S3Client'));
+  assert.ok(source.includes('S3_ARTIFACT_BUCKET'));
+  assert.ok(source.includes('PutObjectCommand'));
+  assert.ok(source.includes('GetObjectCommand'));
+  assert.ok(source.includes('artifactStorageMode'));
+});
+
+test('artifact upload deduplicates by SHA-256', () => {
+  assert.ok(source.includes('WHERE project_id=$1 AND sha256=$2'));
+  assert.ok(source.includes('deduplicated:true'));
+});
+
+test('artifact delete removes object storage payload', () => {
+  assert.ok(source.includes('app.delete("/v1/team-projects/:id/artifacts/:remoteID"'));
+  assert.ok(source.includes('deleteStoredArtifact'));
 });
