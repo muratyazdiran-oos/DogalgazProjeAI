@@ -383,13 +383,17 @@ extension GasProject {
     }
 
     private static func streamingSHA256(_ url: URL) -> String? {
-        guard let handle=try? FileHandle(forReadingFrom:url) else{return nil}
-        defer{try? handle.close()}
-        var hasher=SHA256()
-        while autoreleasepool(invoking:{
-            guard let data=try? handle.read(upToCount:1024*1024),let data,!data.isEmpty else{return false}
-            hasher.update(data:data);return true
-        }){}
-        return hasher.finalize().map{String(format:"%02x",$0)}.joined()
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        do {
+            while true {
+                guard let chunk = try handle.read(upToCount: 1024 * 1024), !chunk.isEmpty else { break }
+                hasher.update(data: chunk)
+            }
+        } catch {
+            return nil
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
