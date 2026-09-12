@@ -4,8 +4,8 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../backend/server.js', import.meta.url), 'utf8');
 
-test('v2.1 API and critical production routes are present', () => {
-  assert.ok(source.includes('const apiVersion = "2.1.0"'));
+test('v2.2 API and critical production routes are present', () => {
+  assert.ok(source.includes('const apiVersion = "2.2.0"'));
   for (const route of ['/v1/projects/analyze-video','/v1/team-projects/sync-batch','/v1/teams/:id/dashboard','/v1/auth/logout','/v1/auth/change-password']) assert.ok(source.includes(route));
 });
 
@@ -37,4 +37,21 @@ test('team dashboard exposes project workflow fields', () => {
   assert.ok(source.includes('assignedToEmail'));
   assert.ok(source.includes('dueDate'));
   assert.ok(source.includes('countsByStatus'));
+});
+
+
+test('batch sync checks team membership for new projects', () => {
+  assert.ok(source.includes('team membership required'));
+  assert.ok(source.includes('teamID&&!await teamRole(teamID,req.teamUser)'));
+});
+
+test('artifact routes require team auth and hash artifacts', () => {
+  assert.ok(source.includes('/v1/team-projects/:id/artifacts'));
+  assert.ok(source.includes('requireTeamAuth,artifactUpload.single("artifact")'));
+  assert.ok(source.includes('createHash("sha256")'));
+  assert.ok(source.includes('X-Artifact-SHA256'));
+});
+
+test('production requires APP_API_TOKEN', () => {
+  assert.ok(source.includes('Production AI endpoint için APP_API_TOKEN zorunludur.'));
 });
