@@ -92,6 +92,7 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
     private var depthSamples: [ARDepthSample] = []
     private var lastDepthSampleTime: Double = -10
     private var sessionID = UUID()
+    private var recordingOrientationDegrees = 0
     private var projectID: UUID?
     private var finishHandler: ((Result<ARCaptureArtifact, Error>) -> Void)?
 
@@ -146,7 +147,8 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
             ]
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
             input.expectsMediaDataInRealTime = true
-            input.transform = Self.currentVideoTransform()
+            recordingOrientationDegrees = Self.currentVideoOrientationDegrees()
+            input.transform = Self.videoTransform(degrees: recordingOrientationDegrees)
             guard writer.canAdd(input) else { throw RecorderError.writerSetup }
             writer.add(input)
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
@@ -208,7 +210,7 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                         durationSeconds: duration,
                         depthFileName: depthFile,
                         sceneDepthSupported: ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth),
-                        videoOrientationDegrees: Self.currentVideoOrientationDegrees()
+                        videoOrientationDegrees: self.recordingOrientationDegrees
                     )
                     self.writer = nil; self.writerInput = nil; self.adaptor = nil
                     completion(.success(artifact))
@@ -295,9 +297,8 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
-    private static func currentVideoTransform() -> CGAffineTransform {
-        let degrees = currentVideoOrientationDegrees()
-        return CGAffineTransform(rotationAngle: CGFloat(Double(degrees) * .pi / 180))
+    private static func videoTransform(degrees: Int) -> CGAffineTransform {
+        CGAffineTransform(rotationAngle: CGFloat(Double(degrees) * .pi / 180))
     }
 
     enum RecorderError: LocalizedError {
