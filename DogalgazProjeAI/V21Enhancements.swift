@@ -347,7 +347,7 @@ struct ARRoomAlignmentView: View {
 
 enum ARWorldProjection {
     static func project(normalizedVideoPoint: Point2D, timeSeconds: Double, project: GasProject) throws -> WorldPoint3D {
-        try project(normalizedVideoBox: BoundingBox2D(x: normalizedVideoPoint.x-0.02, y: normalizedVideoPoint.y-0.02, width: 0.04, height: 0.04), timeSeconds: timeSeconds, project: project)
+        try Self.project(normalizedVideoBox: BoundingBox2D(x: normalizedVideoPoint.x-0.02, y: normalizedVideoPoint.y-0.02, width: 0.04, height: 0.04), timeSeconds: timeSeconds, project: project)
     }
 
     static func project(normalizedVideoBox box: BoundingBox2D, timeSeconds: Double, project: GasProject) throws -> WorldPoint3D {
