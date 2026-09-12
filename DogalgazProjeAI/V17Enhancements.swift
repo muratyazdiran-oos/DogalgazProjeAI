@@ -40,7 +40,10 @@ enum ObstacleAwareRouter {
         func nearManualObstacle(_ p: (x: Double, y: Double)) -> Bool {
             (project.spatialObstacles ?? []).contains { obstacle in
                 let margin = 0.12
-                return abs(p.x-obstacle.centerX) <= obstacle.widthMeters/2 + margin &&
+                let routeElevation = 1.7
+                let verticalOverlap = (obstacle.minElevationM ?? 0) <= routeElevation && (obstacle.maxElevationM ?? 99) >= routeElevation
+                return verticalOverlap &&
+                       abs(p.x-obstacle.centerX) <= obstacle.widthMeters/2 + margin &&
                        abs(p.y-obstacle.centerZ) <= obstacle.depthMeters/2 + margin
             }
         }
