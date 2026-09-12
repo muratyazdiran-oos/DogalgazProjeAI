@@ -362,21 +362,21 @@ struct Route3DPlannerView: View {
 
 extension GasProject {
     var evidenceManifestForApproval: [String] {
-        var hashes: [String] = []
+        var hashes = Set<String>()
         for record in fieldChecklist?.records ?? [] {
-            if let hash=record.evidenceSHA256 { hashes.append("field:\(record.kind.rawValue):\(hash)") }
+            if let hash = record.evidenceSHA256 { hashes.insert(hash.lowercased()) }
         }
         for artifact in cloudArtifacts ?? [] {
-            hashes.append("cloud:\(artifact.kind):\(artifact.fileName):\(artifact.sha256)")
+            hashes.insert(artifact.sha256.lowercased())
         }
-        if let artifact=arCaptureArtifact {
-            let dir=arCaptureDirectory
-            let urls=[
-                ("ar-video",dir.appendingPathComponent(artifact.videoFileName)),
-                ("ar-trajectory",dir.appendingPathComponent(artifact.trajectoryFileName))
-            ] + (artifact.depthFileName.map{[("ar-depth",dir.appendingPathComponent($0))]} ?? [])
-            for (kind,url) in urls {
-                if let hash=Self.streamingSHA256(url) { hashes.append("\(kind):\(hash)") }
+        if let artifact = arCaptureArtifact {
+            let dir = arCaptureDirectory
+            let urls = [
+                dir.appendingPathComponent(artifact.videoFileName),
+                dir.appendingPathComponent(artifact.trajectoryFileName)
+            ] + (artifact.depthFileName.map { [dir.appendingPathComponent($0)] } ?? [])
+            for url in urls {
+                if let hash = Self.streamingSHA256(url) { hashes.insert(hash.lowercased()) }
             }
         }
         return hashes.sorted()
