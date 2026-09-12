@@ -28,6 +28,8 @@ struct ProjectRevision: Identifiable, Codable, Hashable {
     var activeFloorID: UUID? = nil
     var reviewState: QualityReviewState? = nil
     var approvalWorkflow: ApprovalWorkflow? = nil
+    var spatialObstacles: [SpatialObstacle]? = nil
+    var projectWorkflow: ProjectWorkflow? = nil
 }
 
 struct QualityReviewState: Codable, Hashable {
@@ -149,7 +151,7 @@ struct CollaborationSettings: Codable, Hashable {
 extension GasProject {
     mutating func addRevision(note: String) {
         var items = revisions ?? []
-        items.insert(ProjectRevision(note: note, analysis: analysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, calibration: calibration, floors: floors, activeFloorID: activeFloorID, reviewState: reviewState, approvalWorkflow: approvalWorkflow), at: 0)
+        items.insert(ProjectRevision(note: note, analysis: analysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, calibration: calibration, floors: floors, activeFloorID: activeFloorID, reviewState: reviewState, approvalWorkflow: approvalWorkflow, spatialObstacles: spatialObstacles, projectWorkflow: projectWorkflow), at: 0)
         revisions = Array(items.prefix(50))
     }
 
@@ -163,6 +165,8 @@ extension GasProject {
         activeFloorID = revision.activeFloorID
         reviewState = revision.reviewState
         approvalWorkflow = revision.approvalWorkflow
+        spatialObstacles = revision.spatialObstacles
+        projectWorkflow = revision.projectWorkflow
         updatedAt = .now
     }
 
@@ -258,8 +262,9 @@ extension GasProject {
             let roomScan: RoomScanSnapshot?
             let engineeringSettings: EngineeringSettings?
             let ruleProfile: RuleProfileDocument?
+            let spatialObstacles: [SpatialObstacle]?
         }
-        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile)
+        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, spatialObstacles: spatialObstacles)
         guard let data = try? JSONEncoder.pretty.encode(payload) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
