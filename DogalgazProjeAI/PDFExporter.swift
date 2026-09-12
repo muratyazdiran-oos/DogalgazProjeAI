@@ -107,38 +107,59 @@ enum PDFExporter {
         let errors = validation.filter { $0.severity == .error }.count
         let warnings = validation.filter { $0.severity == .warning }.count
 
-        var lines = [
-            "HESAP / KEŞİF ÖZETİ",
-            "AI güveni: %\(Int(analysis.confidence * 100))",
-            String(format: "Toplam güç: %.1f kW", eng.totalLoadKW),
-            String(format: "Yakl. debi: %.2f m³/h", eng.estimatedGasFlowM3h),
-            String(format: "Toplam boru: %.2f m", eng.totalPipeMeters),
-            "Gaz cihazı: \(eng.gasDeviceCount)",
-            "Ön kontrol: \(errors) hata / \(warnings) uyarı",
-            "",
-            "HİDROLİK ÖN KONTROL",
-            hydraulic.message,
-            hydraulic.criticalPressureDropMbar.map { String(format: "Kritik Δp: %.3f mbar", $0) } ?? "Kritik Δp: —",
-            hydraulic.maximumVelocityMS.map { String(format: "Maks. hız: %.2f m/s", $0) } ?? "Maks. hız: —",
-            "Profil: \(settings.profileName)",
-            "Revizyon: \(settings.profileRevision)",
-            project.ruleProfile.map { "Kural kaynağı: \($0.authority)" } ?? "Kural kaynağı: —",
-            project.reviewState.map { "AI kalite kontrolü: \($0.isComplete(for: analysis) ? "tamam" : "eksik")" } ?? "AI kalite kontrolü: yapılmadı",
-            "",
-            "MALZEME ÖZETİ",
-            "Vana: \(analysis.materialSummary.valves)",
-            "Dirsek (tahmini): \(analysis.materialSummary.elbows)",
-            "Tee (tahmini): \(analysis.materialSummary.tees)",
-            "Menfez: \(analysis.materialSummary.vents)",
-            project.quoteSettings.map { String(format: "Teklif toplamı: %.2f %@", $0.total(for: analysis.materialSummary), $0.currency) } ?? "Teklif toplamı: —",
-            "",
-            "LEJANT",
-            "Mavi nokta: cihaz",
-            "Turuncu çizgi: gaz borusu",
-            "Gri çizgi: ölçü",
-            "",
-            "AI NOTLARI"
-        ]
+        var lines: [String] = []
+        lines.append("HESAP / KEŞİF ÖZETİ")
+        lines.append("AI güveni: %\(Int(analysis.confidence * 100))")
+        lines.append(String(format: "Toplam güç: %.1f kW", eng.totalLoadKW))
+        lines.append(String(format: "Yakl. debi: %.2f m³/h", eng.estimatedGasFlowM3h))
+        lines.append(String(format: "Toplam boru: %.2f m", eng.totalPipeMeters))
+        lines.append("Gaz cihazı: \(eng.gasDeviceCount)")
+        lines.append("Ön kontrol: \(errors) hata / \(warnings) uyarı")
+        lines.append("")
+        lines.append("HİDROLİK ÖN KONTROL")
+        lines.append(hydraulic.message)
+        if let drop = hydraulic.criticalPressureDropMbar {
+            lines.append(String(format: "Kritik Δp: %.3f mbar", drop))
+        } else {
+            lines.append("Kritik Δp: —")
+        }
+        if let velocity = hydraulic.maximumVelocityMS {
+            lines.append(String(format: "Maks. hız: %.2f m/s", velocity))
+        } else {
+            lines.append("Maks. hız: —")
+        }
+        lines.append("Profil: \(settings.profileName)")
+        lines.append("Revizyon: \(settings.profileRevision)")
+        if let rule = project.ruleProfile {
+            lines.append("Kural kaynağı: \(rule.authority)")
+        } else {
+            lines.append("Kural kaynağı: —")
+        }
+        if let review = project.reviewState {
+            let reviewText = review.isComplete(for: analysis) ? "tamam" : "eksik"
+            lines.append("AI kalite kontrolü: \(reviewText)")
+        } else {
+            lines.append("AI kalite kontrolü: yapılmadı")
+        }
+        lines.append("")
+        lines.append("MALZEME ÖZETİ")
+        lines.append("Vana: \(analysis.materialSummary.valves)")
+        lines.append("Dirsek (tahmini): \(analysis.materialSummary.elbows)")
+        lines.append("Tee (tahmini): \(analysis.materialSummary.tees)")
+        lines.append("Menfez: \(analysis.materialSummary.vents)")
+        if let quote = project.quoteSettings {
+            let total = quote.total(for: analysis.materialSummary)
+            lines.append(String(format: "Teklif toplamı: %.2f %@", total, quote.currency))
+        } else {
+            lines.append("Teklif toplamı: —")
+        }
+        lines.append("")
+        lines.append("LEJANT")
+        lines.append("Mavi nokta: cihaz")
+        lines.append("Turuncu çizgi: gaz borusu")
+        lines.append("Gri çizgi: ölçü")
+        lines.append("")
+        lines.append("AI NOTLARI")
         lines.append(contentsOf: analysis.notes.prefix(4).map { "• \($0)" })
         NSString(string: lines.joined(separator: "\n"))
             .draw(in: rect.insetBy(dx: 8, dy: 8), withAttributes: [.font: UIFont.systemFont(ofSize: 7.5)])
