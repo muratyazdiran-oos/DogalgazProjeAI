@@ -139,12 +139,14 @@ app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single
   const remoteID=crypto.randomUUID();
   const dir=path.join(artifactStorageDir,id);fs.mkdirSync(dir,{recursive:true});
   const target=path.join(dir,remoteID);
-  const data=await fs.promises.readFile(req.file.path);
-  const sha256=crypto.createHash("sha256").update(data).digest("hex");
+  const stat=await fs.promises.stat(req.file.path);
+  const hash=crypto.createHash("sha256");
+  await new Promise((resolve,reject)=>{const stream=fs.createReadStream(req.file.path);stream.on("data",chunk=>hash.update(chunk));stream.on("end",resolve);stream.on("error",reject);});
+  const sha256=hash.digest("hex");
   await fs.promises.rename(req.file.path,target);
-  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,data.length,target,req.teamUser]);
-  await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:data.length});
-  res.json({remoteID,kind,fileName,sha256,byteCount:data.length,uploadedAt:new Date().toISOString()});
+  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,stat.size,target,req.teamUser]);
+  await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:stat.size});
+  res.json({remoteID,kind,fileName,sha256,byteCount:stat.size,uploadedAt:new Date().toISOString()});
 });
 app.get("/v1/team-projects/:id/artifacts",requireTeamAuth,async(req,res)=>{
   const id=req.params.id.toLowerCase();
