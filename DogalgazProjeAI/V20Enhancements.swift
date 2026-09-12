@@ -53,7 +53,12 @@ enum ARCaptureInspector {
         var score = 100
         if frameCount < 60 { score -= 25; warnings.append("AR kaydı çok kısa veya az kare içeriyor.") }
         if artifact.durationSeconds < 5 { score -= 20; warnings.append("En az birkaç saniyelik yavaş saha taraması önerilir.") }
-        if depthCoverage < 0.25 { score -= 15; warnings.append("LiDAR/depth kapsaması düşük.") }
+        if artifact.sceneDepthSupported == true && depthCoverage < 0.25 {
+            score -= 15
+            warnings.append("LiDAR/depth kapsaması düşük.")
+        } else if artifact.sceneDepthSupported == false {
+            warnings.append("Bu cihaz sceneDepth desteklemiyor; depth puanı uygulanmadı.")
+        }
         if maxJump > 0.75 { score -= 20; warnings.append("Kamera takibinde ani sıçrama algılandı.") }
         if abs(Double(frameCount - artifact.frameCount)) > max(5.0, Double(artifact.frameCount) * 0.05) {
             score -= 10
@@ -96,7 +101,9 @@ enum ARCaptureInspector {
             return (key, dates.max() ?? .distantPast, urls)
         }.sorted { $0.1 > $1.1 }
 
+        let protectedSession = project.arCaptureArtifact?.sessionID.uuidString
         for session in sessions.dropFirst(max(1, keepLatest)) {
+            guard session.0 != protectedSession else { continue }
             for url in session.2 { try? FileManager.default.removeItem(at: url) }
         }
     }
