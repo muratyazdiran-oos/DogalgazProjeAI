@@ -37,10 +37,17 @@ enum ObstacleAwareRouter {
                 return hypot(p.x-opening.centerX, p.y-opening.centerZ) < clearance
             }
         }
+        func nearManualObstacle(_ p: (x: Double, y: Double)) -> Bool {
+            (project.spatialObstacles ?? []).contains { obstacle in
+                let margin = 0.12
+                return abs(p.x-obstacle.centerX) <= obstacle.widthMeters/2 + margin &&
+                       abs(p.y-obstacle.centerZ) <= obstacle.depthMeters/2 + margin
+            }
+        }
         func blocked(_ c: Cell) -> Bool {
             if c == startCell || c == goalCell { return false }
             let p = meters(c)
-            return !insideRoom(p) || nearOpening(p)
+            return !insideRoom(p) || nearOpening(p) || nearManualObstacle(p)
         }
 
         var open: [Node] = [Node(cell: startCell, score: heuristic(startCell, goalCell))]
