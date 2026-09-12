@@ -18,7 +18,7 @@ Uygulama resmî dağıtım şirketi onayı vermez. Kural değerleri yalnız doğ
 `backend/.env.example` temel alınır. AI için `GEMINI_API_KEY`; ekip/bulut için `TEAM_AUTH_SECRET` ve production kullanımında PostgreSQL gereklidir. HTTPS, yedekleme ve migration akışı korunur.
 
 ## Sürüm
-- iOS: 2.0.0 (build 19)
+- iOS: 2.0.0 (build 20)
 - Backend API: 2.0.0
 - Deployment target: iOS 17+
 
