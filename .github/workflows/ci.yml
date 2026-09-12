@@ -3,6 +3,7 @@ name: DogalgazProjeAI CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   package-gates:
@@ -16,8 +17,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: node --check backend/server.js
-      - run: python3 scripts/quality-gates-v19.py
+      - run: python3 scripts/quality-gates-v20.py
       - run: node --test tests/backend-contract.test.mjs
+      - name: Reject committed secrets
+        run: |
+          ! grep -RInE "(GEMINI_API_KEY|TEAM_AUTH_SECRET|APP_API_TOKEN)=[^[:space:]]+" . --exclude-dir=.git --exclude="*.example"
 
   ios-build:
     runs-on: macos-latest
