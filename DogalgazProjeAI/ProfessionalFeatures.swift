@@ -306,7 +306,7 @@ enum DXFExporter {
         let hash = project.engineeringContentHashSHA256() ?? "UNVERIFIED"
         let rev = project.revisions?.count ?? 0
 
-        var dxf = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n9\n$INSUNITS\n70\n4\n999\nDogalgazProjeAI v1.9 • REV \(rev) • SHA256 \(hash)\n0\nENDSEC\n"
+        var dxf = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n9\n$INSUNITS\n70\n4\n999\nDogalgazProjeAI v2.1 • REV \(rev) • SHA256 \(hash)\n0\nENDSEC\n"
         dxf += layerTable()
         dxf += deviceBlocks()
         dxf += "0\nSECTION\n2\nENTITIES\n"
@@ -365,7 +365,7 @@ enum DXFExporter {
 
         dxf += "0\nENDSEC\n0\nEOF\n"
         let safe = project.name.replacingOccurrences(of: "/", with: "-")
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe)-AutoCAD-GasLine-mm-v1.9.dxf")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe)-AutoCAD-GasLine-mm-v2.1.dxf")
         guard let data = dxf.data(using: .utf8) else { throw ExportError.encoding }
         try data.write(to: url, options: .atomic)
         return url
