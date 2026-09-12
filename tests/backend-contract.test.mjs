@@ -4,8 +4,8 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../backend/server.js', import.meta.url), 'utf8');
 
-test('v2.0 API and critical production routes are present', () => {
-  assert.match(source, /const apiVersion = "2\.0\.0"/);
+test('v2.1 API and critical production routes are present', () => {
+  assert.match(source, /const apiVersion = "2\\.1\\.0"/);
   for (const route of ['/v1/projects/analyze-video','/v1/team-projects/sync-batch','/v1/teams/:id/dashboard','/v1/auth/logout','/v1/auth/change-password']) assert.ok(source.includes(route));
 });
 
