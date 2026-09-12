@@ -127,6 +127,48 @@ app.get("/v1/teams/:id/dashboard",requireTeamAuth,async(req,res)=>{
 app.put("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const envelope=req.body||{},project=envelope.project,expectedVersion=Number.isInteger(envelope.expectedVersion)?envelope.expectedVersion:null;if(!project||String(project.id||"").toLowerCase()!==req.params.id.toLowerCase())return res.status(400).json({error:"Proje kimliği uyuşmuyor."});const id=req.params.id.toLowerCase(),teamID=project?.collaboration?.teamID||null;const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const existing=rows[0];if(existing&&!await canWrite(existing,req.teamUser))return res.status(403).json({error:"Projeyi düzenleme yetkin yok."});if(teamID&&!await teamRole(teamID,req.teamUser))return res.status(403).json({error:"Takım üyeliği gerekli."});if(existing){if(expectedVersion===null||expectedVersion!==existing.version)return res.status(409).json({error:"Buluttaki proje daha yeni.",currentVersion:existing.version});const next=existing.version+1;const client=await pool.connect();try{await client.query("BEGIN");await client.query("INSERT INTO project_versions(project_id,version,project,saved_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,existing.version,existing.project,req.teamUser]);const update=await client.query("UPDATE projects SET project=$1,team_id=$2,version=$3,updated_at=now() WHERE id=$4 AND version=$5 RETURNING version",[project,teamID,next,id,existing.version]);if(!update.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Senkronizasyon çakışması."});}await client.query("COMMIT");await audit(req,"update","project",id,{version:next});return res.json({ok:true,version:next});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}await pool.query("INSERT INTO projects(id,owner_email,team_id,version,project) VALUES($1,$2,$3,1,$4)",[id,req.teamUser,teamID,project]);await audit(req,"create","project",id,{version:1});res.json({ok:true,version:1});});
 app.post("/v1/team-projects/sync-batch",requireTeamAuth,async(req,res)=>{const items=Array.isArray(req.body?.items)?req.body.items:[];if(items.length<1||items.length>30)return res.status(400).json({error:"1-30 proje gerekli."});const results=[];for(const item of items){const project=item?.project,id=String(project?.id||"").toLowerCase(),expectedVersion=Number.isInteger(item?.expectedVersion)?item.expectedVersion:null;if(!id){results.push({ok:false,error:"project id missing"});continue;}const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const existing=rows[0];if(existing&&!await canWrite(existing,req.teamUser)){results.push({id,ok:false,status:403});continue;}if(existing&&(expectedVersion===null||expectedVersion!==existing.version)){results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}if(existing){const next=existing.version+1;const client=await pool.connect();try{await client.query("BEGIN");await client.query("INSERT INTO project_versions(project_id,version,project,saved_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,existing.version,existing.project,req.teamUser]);const update=await client.query("UPDATE projects SET project=$1,version=$2,updated_at=now() WHERE id=$3 AND version=$4 RETURNING version",[project,next,id,existing.version]);if(!update.rowCount){await client.query("ROLLBACK");results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}await client.query("COMMIT");results.push({id,ok:true,version:next});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}else{const teamID=project?.collaboration?.teamID||null;if(teamID&&!await teamRole(teamID,req.teamUser)){results.push({id,ok:false,status:403,error:"team membership required"});continue;}await pool.query("INSERT INTO projects(id,owner_email,team_id,version,project) VALUES($1,$2,$3,1,$4)",[id,req.teamUser,teamID,project]);results.push({id,ok:true,version:1});}}await audit(req,"sync_batch","project",null,{count:items.length});res.json({results});});
 app.get("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[req.params.id.toLowerCase()]);const r=rows[0];if(!r)return res.status(404).json({error:"Proje bulunamadı."});if(!await canRead(r,req.teamUser))return res.status(403).json({error:"Projeyi görme yetkin yok."});res.json({project:r.project,version:r.version});});
+
+app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single("artifact"),async(req,res)=>{
+  const id=req.params.id.toLowerCase();
+  if(!req.file)return res.status(400).json({error:"Artifact dosyası gerekli."});
+  const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);
+  const project=rows[0];
+  if(!project||!await canWrite(project,req.teamUser)){fs.unlink(req.file.path,()=>{});return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});}
+  const kind=String(req.body?.kind||"artifact").slice(0,40);
+  const fileName=path.basename(String(req.body?.fileName||req.file.originalname||"artifact.bin")).slice(0,180);
+  const remoteID=crypto.randomUUID();
+  const dir=path.join(artifactStorageDir,id);fs.mkdirSync(dir,{recursive:true});
+  const target=path.join(dir,remoteID);
+  const data=await fs.promises.readFile(req.file.path);
+  const sha256=crypto.createHash("sha256").update(data).digest("hex");
+  await fs.promises.rename(req.file.path,target);
+  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,data.length,target,req.teamUser]);
+  await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:data.length});
+  res.json({remoteID,kind,fileName,sha256,byteCount:data.length,uploadedAt:new Date().toISOString()});
+});
+app.get("/v1/team-projects/:id/artifacts",requireTeamAuth,async(req,res)=>{
+  const id=req.params.id.toLowerCase();
+  const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);
+  const project=p[0];
+  if(!project)return res.status(404).json({error:"Proje bulunamadı."});
+  if(!await canRead(project,req.teamUser))return res.status(403).json({error:"Yetki yok."});
+  const {rows}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 ORDER BY created_at DESC',[id]);
+  res.json({artifacts:rows});
+});
+app.get("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req,res)=>{
+  const id=req.params.id.toLowerCase();
+  const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);
+  const project=p[0];
+  if(!project)return res.status(404).end();
+  if(!await canRead(project,req.teamUser))return res.status(403).end();
+  const {rows}=await pool.query("SELECT * FROM project_artifacts WHERE project_id=$1 AND remote_id=$2",[id,req.params.remoteID]);
+  const a=rows[0];
+  if(!a||!fs.existsSync(a.storage_path))return res.status(404).end();
+  res.setHeader("X-Artifact-SHA256",a.sha256);
+  res.setHeader("Content-Disposition",'attachment; filename="'+encodeURIComponent(a.file_name)+'"');
+  fs.createReadStream(a.storage_path).pipe(res);
+});
+
 app.get("/v1/team-projects/:id/versions",requireTeamAuth,async(req,res)=>{const id=req.params.id.toLowerCase();const {rows:projects}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const r=projects[0];if(!r)return res.status(404).json({error:"Proje bulunamadı."});if(!await canRead(r,req.teamUser))return res.status(403).json({error:"Projeyi görme yetkin yok."});const {rows}=await pool.query("SELECT version,saved_by,saved_at FROM project_versions WHERE project_id=$1 ORDER BY version DESC LIMIT 50",[id]);res.json({currentVersion:r.version,versions:rows});});
 
 app.post("/v1/projects/analyze-video",requireAppToken,upload.single("video"),async(req,res)=>{if(!req.file)return res.status(400).json({error:"Video gerekli."});let remoteFile;try{remoteFile=await ai.files.upload({file:req.file.path,config:{mimeType:req.file.mimetype||"video/mp4"}});let current=await ai.files.get({name:remoteFile.name});const started=Date.now();while(current.state==="PROCESSING"){if(Date.now()-started>9*60000)throw new Error("Video işleme zaman aşımına uğradı.");await new Promise(r=>setTimeout(r,3000));current=await ai.files.get({name:remoteFile.name});}if(current.state==="FAILED")throw new Error("Video işlenemedi.");const response=await ai.interactions.create({model,input:[{type:"text",text:prompt},{type:"video",uri:current.uri,mime_type:current.mimeType}],response_format:{type:"text",mime_type:"application/json",schema}});res.json(JSON.parse(response.output_text));}catch(error){console.error(`[${req.requestId}]`,error);const raw=error?.message||"AI analizi başarısız.";res.status(500).json({error:isProduction?"AI analizi şu anda tamamlanamadı.":raw,requestId:req.requestId});}finally{if(remoteFile?.name)try{await ai.files.delete({name:remoteFile.name});}catch{}if(req.file?.path)fs.unlink(req.file.path,()=>{});}});
