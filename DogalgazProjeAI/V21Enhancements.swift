@@ -88,7 +88,7 @@ enum ARWorldProjection {
         for i in analysis.devices.indices {
             guard let time = analysis.devices[i].videoTimeSeconds,
                   let box = analysis.devices[i].videoBoundingBox,
-                  let world = try? projectWorldPoint(box.center, time: time, project: project) else { continue }
+                  let world = try? ARWorldProjection.project(normalizedVideoPoint: box.center, timeSeconds: time, project: project) else { continue }
             analysis.devices[i].worldPosition = world
             analysis.devices[i].elevationM = world.y
             changed = true
@@ -100,9 +100,6 @@ enum ARWorldProjection {
         return copy
     }
 
-    private static func projectWorldPoint(_ point: Point2D, time: Double, project: GasProject) throws -> WorldPoint3D {
-        try project(normalizedVideoPoint: point, timeSeconds: time, project: project)
-    }
 
     private static func unrotate(_ p: Point2D, degrees: Int) -> Point2D {
         switch degrees {
@@ -346,15 +343,27 @@ struct SpatialObstacleEditorView: View {
 
     private func obstacleKindBinding(_ index: Int) -> Binding<SpatialObstacle.Kind> {
         Binding(get: { project.spatialObstacles?[index].kind ?? .other },
-                set: { project.spatialObstacles?[index].kind = $0 })
+                set: { value in
+                    guard var items = project.spatialObstacles, items.indices.contains(index) else { return }
+                    items[index].kind = value
+                    project.spatialObstacles = items
+                })
     }
     private func obstacleLabelBinding(_ index: Int) -> Binding<String> {
         Binding(get: { project.spatialObstacles?[index].label ?? "" },
-                set: { project.spatialObstacles?[index].label = $0 })
+                set: { value in
+                    guard var items = project.spatialObstacles, items.indices.contains(index) else { return }
+                    items[index].label = value
+                    project.spatialObstacles = items
+                })
     }
     private func obstacleDoubleBinding(_ index: Int, _ kp: WritableKeyPath<SpatialObstacle, Double>) -> Binding<Double> {
         Binding(get: { project.spatialObstacles?[index][keyPath: kp] ?? 0 },
-                set: { project.spatialObstacles?[index][keyPath: kp] = $0 })
+                set: { value in
+                    guard var items = project.spatialObstacles, items.indices.contains(index) else { return }
+                    items[index][keyPath: kp] = value
+                    project.spatialObstacles = items
+                })
     }
 }
 
