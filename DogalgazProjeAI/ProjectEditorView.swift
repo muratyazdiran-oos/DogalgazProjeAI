@@ -266,11 +266,22 @@ struct ProjectEditorView: View {
     }
 
     private func nearestPipe(to point: CGPoint, size: CGSize) -> UUID? {
-        draft.pipes.map { pipe in
-            let a = CGPoint(x: pipe.start.x * size.width, y: pipe.start.y * size.height)
-            let b = CGPoint(x: pipe.end.x * size.width, y: pipe.end.y * size.height)
-            return (pipe.id, distance(point, toSegmentFrom: a, to: b))
-        }.filter { $0.1 < 32 }.min { $0.1 < $1.1 }?.0
+        var bestID: UUID?
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for pipe in draft.pipes {
+            let ax = CGFloat(pipe.start.x) * size.width
+            let ay = CGFloat(pipe.start.y) * size.height
+            let bx = CGFloat(pipe.end.x) * size.width
+            let by = CGFloat(pipe.end.y) * size.height
+            let a = CGPoint(x: ax, y: ay)
+            let b = CGPoint(x: bx, y: by)
+            let d = distance(point, toSegmentFrom: a, to: b)
+            if d < 32 && d < bestDistance {
+                bestDistance = d
+                bestID = pipe.id
+            }
+        }
+        return bestID
     }
 
     private func distance(_ p: CGPoint, toSegmentFrom a: CGPoint, to b: CGPoint) -> CGFloat {
