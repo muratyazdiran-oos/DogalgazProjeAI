@@ -12,6 +12,8 @@ struct GasApplianceModel: Identifiable, Codable, Hashable {
     var gasLineName: String?
     var gasLineCode: String?
     var source: String?
+    var sourceDocumentHashSHA256: String? = nil
+    var engineerVerified: Bool? = nil
 
     var displayName: String { "\(brand) \(model)" }
 }
@@ -68,7 +70,11 @@ extension DeviceCatalog {
 
     static func importModels(from data: Data) throws -> Int {
         let incoming = try JSONDecoder.standard.decode([GasApplianceModel].self, from: data)
-        let valid = incoming.filter { !$0.catalogID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.brand.isEmpty && !$0.model.isEmpty }
+        let valid = incoming.filter {
+            !$0.catalogID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !$0.brand.isEmpty && !$0.model.isEmpty &&
+            ($0.gasLineCode == nil || $0.sourceDocumentHashSHA256 != nil)
+        }
         guard !valid.isEmpty else { throw CatalogError.empty }
         var current = all.filter { item in !bundled.contains(where: { $0.catalogID == item.catalogID }) }
         var byID = Dictionary(uniqueKeysWithValues: current.map { ($0.catalogID, $0) })
@@ -79,7 +85,7 @@ extension DeviceCatalog {
     }
 
     static func exportTemplate() throws -> URL {
-        let sample = [GasApplianceModel(catalogID: "gasline-ornek-kombi", deviceType: .boiler, brand: "Marka", model: "Model", nominalPowerKW: 24, maxGasConsumptionM3h: nil, connectionInch: "3/4", gasLineName: "GasLine katalog adı", gasLineCode: "DOĞRULANMIŞ-KOD", source: "GasLine/üretici kaynağı")]
+        let sample = [GasApplianceModel(catalogID: "gasline-ornek-kombi", deviceType: .boiler, brand: "Marka", model: "Model", nominalPowerKW: 24, maxGasConsumptionM3h: nil, connectionInch: "3/4", gasLineName: "GasLine katalog adı", gasLineCode: "DOĞRULANMIŞ-KOD", source: "GasLine/üretici kaynağı", sourceDocumentHashSHA256: "KAYNAK-SHA256", engineerVerified: true)]
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GasLine-Cihaz-Katalog-Sablonu.json")
         try JSONEncoder.pretty.encode(sample).write(to: url, options: .atomic)
         return url
