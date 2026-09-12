@@ -103,6 +103,9 @@ const migrations = [
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_project_artifacts_project ON project_artifacts(project_id, created_at DESC);
+  `},
+  { version: 4, sql: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_project_artifacts_project_sha ON project_artifacts(project_id, sha256);
   `}
 ];
 async function runMigrations(db) {
