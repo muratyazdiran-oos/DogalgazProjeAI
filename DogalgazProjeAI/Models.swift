@@ -24,6 +24,7 @@ struct GasProject: Identifiable, Codable, Hashable {
     var fieldChecklist: FieldChecklist? = nil
     var spatialCapture: SpatialCaptureState? = nil
     var arCaptureArtifact: ARCaptureArtifact? = nil
+    var spatialObstacles: [SpatialObstacle]? = nil
 
     init(
         id: UUID = UUID(),
@@ -158,6 +159,9 @@ struct GasDevice: Identifiable, Codable, Hashable {
     var modelVerifiedByUser: Bool? = nil
     var elevationM: Double? = nil
     var evidenceSHA256: String? = nil
+    var videoTimeSeconds: Double? = nil
+    var videoBoundingBox: BoundingBox2D? = nil
+    var worldPosition: WorldPoint3D? = nil
 }
 
 struct DimensionLine: Identifiable, Codable, Hashable {
