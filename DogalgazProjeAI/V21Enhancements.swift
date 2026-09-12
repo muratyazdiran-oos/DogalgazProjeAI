@@ -206,52 +206,106 @@ enum PipeDiameterAdvisor {
     static let standardDiameters = [15,18,22,28,35,42,54]
 
     static func suggestions(for project: GasProject) -> [PipeSizingSuggestion] {
-        guard let analysis = project.resolvedAnalysis else { return [] }
+        guard let source = project.resolvedAnalysis else { return [] }
         let settings = project.resolvedEngineeringSettings
         guard settings.maxVelocityMS != nil || settings.maxPressureDropMbar != nil else { return [] }
-        let base = HydraulicCalculator.calculate(analysis, settings: settings)
-        var output: [PipeSizingSuggestion] = []
 
-        for baseResult in base.segmentResults {
-            guard let index = analysis.pipes.firstIndex(where: { $0.id == baseResult.pipeID }) else { continue }
-            let original = analysis.pipes[index]
-            var chosen: (Int, PipeHydraulicResult)? = nil
-            for diameter in standardDiameters {
-                var trial = analysis
-                trial.pipes[index].diameterMM = diameter
-                let summary = HydraulicCalculator.calculate(trial, settings: settings)
-                guard let result = summary.segmentResults.first(where: { $0.pipeID == original.id }) else { continue }
-                let velocityOK = settings.maxVelocityMS.map { (result.velocityMS ?? .infinity) <= $0 } ?? true
-                let pressureValue = summary.criticalPressureDropMbar ?? result.pressureDropMbar
-                let pressureOK = settings.maxPressureDropMbar.map { (pressureValue ?? .infinity) <= $0 } ?? true
-                if velocityOK && pressureOK { chosen = (diameter, result); break }
+        var trial = source
+        for i in trial.pipes.indices {
+            if !standardDiameters.contains(trial.pipes[i].diameterMM) {
+                trial.pipes[i].diameterMM = nearestStandard(to: trial.pipes[i].diameterMM)
             }
-            guard let chosen else { continue }
-            output.append(.init(
-                pipeID: original.id,
-                currentDiameterMM: original.diameterMM,
-                recommendedDiameterMM: chosen.0,
-                flowM3h: chosen.1.flowM3h,
-                velocityMS: chosen.1.velocityMS,
-                pressureDropMbar: chosen.1.pressureDropMbar
-            ))
+            trial.pipes[i].internalDiameterMM = PipeDimensionCatalog.bestInternalDiameter(
+                material: settings.pipeMaterial,
+                nominalMM: trial.pipes[i].diameterMM
+            )
         }
-        return output
+
+        // Tüm ağ birlikte değerlendirilir. Önce küçük çaptan başlar, limit ihlali
+        // oldukça kritik/uygunsuz segmentler büyütülür ve ağ yeniden hesaplanır.
+        for _ in 0..<120 {
+            let summary = HydraulicCalculator.calculate(trial, settings: settings)
+            let velocityLimit = settings.maxVelocityMS
+            let pressureLimit = settings.maxPressureDropMbar
+            let velocityViolations = summary.segmentResults.filter { r in
+                velocityLimit.map { (r.velocityMS ?? .infinity) > $0 } ?? false
+            }
+            let pressureViolation = pressureLimit.map { (summary.criticalPressureDropMbar ?? .infinity) > $0 } ?? false
+
+            if velocityViolations.isEmpty && !pressureViolation { break }
+
+            var candidates = Set(velocityViolations.map(\.pipeID))
+            if pressureViolation {
+                // Kritik hat bilgisi segment cumulative drop ile yaklaşık seçilir.
+                if let worst = summary.segmentResults
+                    .filter({ $0.cumulativePressureDropMbar != nil })
+                    .max(by: { ($0.cumulativePressureDropMbar ?? 0) < ($1.cumulativePressureDropMbar ?? 0) }) {
+                    candidates.insert(worst.pipeID)
+                }
+                // Basınç limiti hâlâ aşılmışsa yüksek debili segmentler de adaydır.
+                for r in summary.segmentResults.sorted(by: { $0.flowM3h > $1.flowM3h }).prefix(3) {
+                    candidates.insert(r.pipeID)
+                }
+            }
+
+            var changed = false
+            for id in candidates {
+                guard let idx = trial.pipes.firstIndex(where: { $0.id == id }) else { continue }
+                let current = trial.pipes[idx].diameterMM
+                guard let next = nextDiameter(after: current) else { continue }
+                trial.pipes[idx].diameterMM = next
+                trial.pipes[idx].internalDiameterMM = PipeDimensionCatalog.bestInternalDiameter(
+                    material: settings.pipeMaterial,
+                    nominalMM: next
+                )
+                changed = true
+            }
+            if !changed { break }
+        }
+
+        let final = HydraulicCalculator.calculate(trial, settings: settings)
+        return trial.pipes.compactMap { pipe in
+            guard let original = source.pipes.first(where: { $0.id == pipe.id }),
+                  let result = final.segmentResults.first(where: { $0.pipeID == pipe.id }) else { return nil }
+            return PipeSizingSuggestion(
+                pipeID: pipe.id,
+                currentDiameterMM: original.diameterMM,
+                recommendedDiameterMM: pipe.diameterMM,
+                flowM3h: result.flowM3h,
+                velocityMS: result.velocityMS,
+                pressureDropMbar: result.pressureDropMbar
+            )
+        }
     }
 
     static func applying(_ suggestions: [PipeSizingSuggestion], to project: GasProject) -> GasProject {
         guard var analysis = project.analysis else { return project }
+        let settings = project.resolvedEngineeringSettings
         var copy = project
-        copy.addRevision(note: "Otomatik çap önerileri uygulanmadan önce")
+        copy.addRevision(note: "Global ağ çap önerileri uygulanmadan önce")
         for suggestion in suggestions {
             if let idx = analysis.pipes.firstIndex(where: { $0.id == suggestion.pipeID }) {
                 analysis.pipes[idx].diameterMM = suggestion.recommendedDiameterMM
+                analysis.pipes[idx].internalDiameterMM = PipeDimensionCatalog.bestInternalDiameter(
+                    material: settings.pipeMaterial,
+                    nominalMM: suggestion.recommendedDiameterMM
+                )
                 analysis.pipes[idx].requiresReview = true
             }
         }
         analysis.materialSummary = HydraulicCalculator.estimateMaterialSummary(analysis)
         copy.analysis = analysis
         return copy
+    }
+
+    private static func nearestStandard(to value: Int) -> Int {
+        standardDiameters.min(by: { abs($0-value) < abs($1-value) }) ?? value
+    }
+
+    private static func nextDiameter(after current: Int) -> Int? {
+        let normalized = nearestStandard(to: current)
+        guard let idx = standardDiameters.firstIndex(of: normalized), idx + 1 < standardDiameters.count else { return nil }
+        return standardDiameters[idx + 1]
     }
 }
 
