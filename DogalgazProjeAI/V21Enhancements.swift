@@ -117,6 +117,7 @@ struct ARRoomAlignment: Codable, Hashable {
     var arPointB: WorldPoint3D
     var roomPointB: WorldPoint3D
     var calibratedAt: Date = .now
+    var controlPoints: [ARRoomControlPoint]? = nil
 
     var scale: Double {
         let arD = hypot(arPointB.x-arPointA.x, arPointB.z-arPointA.z)
@@ -416,7 +417,7 @@ enum ARWorldProjection {
                   let world = try? ARWorldProjection.project(normalizedVideoBox: box, timeSeconds: time, project: project) else { continue }
             analysis.devices[i].worldPosition = world
             if let alignment = project.arRoomAlignment, let scan = project.roomScan {
-                let roomWorld = alignment.roomPoint(from: world)
+                let roomWorld = alignment.leastSquaresRoomPoint(from: world)
                 analysis.devices[i].position = MetricProjectMapper(scan: scan).normalized(x: roomWorld.x, y: roomWorld.z)
                 analysis.devices[i].elevationM = roomWorld.y
             } else {
