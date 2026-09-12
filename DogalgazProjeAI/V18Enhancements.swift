@@ -182,7 +182,7 @@ enum ProjectImprovementEngine {
             if device.modelVerifiedByUser != true {
                 result.append(.init(id: "verify-\(device.id)", kind: .verifyModel, title: "\(device.label) modelini doğrula", detail: "AI/OCR model tahmini mühendis tarafından onaylanmalı.", deviceID: device.id))
             }
-            if let catalogID = device.catalogID, let model = DeviceCatalog.all.first(where: { $0.catalogID == catalogID }), device.capacityKW == nil && model.nominalPowerKW != nil {
+            if let catalogID = device.catalogID, let model = DeviceCatalog.all.first(where: { $0.catalogID == catalogID }), model.engineerVerified == true, model.sourceDocumentHashSHA256 != nil, device.capacityKW == nil && model.nominalPowerKW != nil {
                 result.append(.init(id: "catalog-\(device.id)", kind: .fillCatalogData, title: "\(device.label) teknik verisini doldur", detail: "Doğrulanmış katalog gücü projeye aktarılabilir.", deviceID: device.id))
             }
         }
@@ -206,7 +206,8 @@ enum ProjectImprovementEngine {
         guard item.kind == .fillCatalogData, let id = item.deviceID, var analysis = project.analysis,
               let index = analysis.devices.firstIndex(where: { $0.id == id }),
               let catalogID = analysis.devices[index].catalogID,
-              let model = DeviceCatalog.all.first(where: { $0.catalogID == catalogID }) else { return false }
+              let model = DeviceCatalog.all.first(where: { $0.catalogID == catalogID }),
+              model.engineerVerified == true, model.sourceDocumentHashSHA256 != nil else { return false }
         project.addRevision(note: "Katalog teknik verisi otomatik doldurulmadan önce")
         if analysis.devices[index].capacityKW == nil { analysis.devices[index].capacityKW = model.nominalPowerKW }
         if analysis.devices[index].maxGasConsumptionM3h == nil { analysis.devices[index].maxGasConsumptionM3h = model.maxGasConsumptionM3h }
@@ -280,9 +281,11 @@ struct ApplianceOCRView: View {
         project.addRevision(note: "OCR cihaz modeli uygulanmadan önce")
         let m = match.model
         analysis.devices[idx].brand = m.brand; analysis.devices[idx].model = m.model; analysis.devices[idx].catalogID = m.catalogID
-        analysis.devices[idx].capacityKW = m.nominalPowerKW ?? analysis.devices[idx].capacityKW
-        analysis.devices[idx].maxGasConsumptionM3h = m.maxGasConsumptionM3h
-        analysis.devices[idx].connectionInch = m.connectionInch
+        if m.engineerVerified == true, m.sourceDocumentHashSHA256 != nil {
+            analysis.devices[idx].capacityKW = m.nominalPowerKW ?? analysis.devices[idx].capacityKW
+            analysis.devices[idx].maxGasConsumptionM3h = m.maxGasConsumptionM3h
+            analysis.devices[idx].connectionInch = m.connectionInch
+        }
         analysis.devices[idx].gasLineName = m.gasLineName; analysis.devices[idx].gasLineCode = m.gasLineCode
         analysis.devices[idx].modelConfidence = match.score; analysis.devices[idx].modelVerifiedByUser = false; analysis.devices[idx].requiresReview = true
         analysis.devices[idx].label = m.displayName
