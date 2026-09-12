@@ -99,6 +99,7 @@ struct PipeSegment: Identifiable, Codable, Hashable {
     var start: Point2D
     var end: Point2D
     var diameterMM: Int
+    var internalDiameterMM: Double? = nil
     var lengthMeters: Double
     var minorLossK: Double? = nil
     var elevationDeltaM: Double? = nil
