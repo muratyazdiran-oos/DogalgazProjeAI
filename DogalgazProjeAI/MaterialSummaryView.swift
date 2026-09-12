@@ -9,7 +9,7 @@ struct MaterialSummaryView: View {
                 .font(.headline)
 
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
-                row("Toplam boru", "\(summary.totalPipeMeters, specifier: "%.1f") m")
+                row("Toplam boru", String(format: "%.1f m", summary.totalPipeMeters))
                 row("Vana", "\(summary.valves) adet")
                 row("Dirsek", "\(summary.elbows) adet")
                 row("Tee", "\(summary.tees) adet")
