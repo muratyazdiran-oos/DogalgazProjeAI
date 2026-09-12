@@ -19,6 +19,11 @@ enum PDFExporter {
             drawRightPanel(project: project, analysis: analysis, cg: cg, rect: CGRect(x: 610, y: 82, width: 198, height: 410))
             drawTitleBlock(project: project, analysis: analysis, cg: cg, rect: CGRect(x: 34, y: 502, width: 774, height: 58))
             drawFooter(cg: cg, page: page)
+
+            context.beginPage()
+            drawFrame(cg: cg, page: page)
+            drawTechnicalPage(project: project, analysis: analysis, cg: cg, page: page)
+            drawFooter(cg: cg, page: page)
         }
         return url
     }
@@ -170,6 +175,56 @@ enum PDFExporter {
         } else {
             drawSmall(approval?.stampText.isEmpty == false ? approval!.stampText : "imza / kaşe", at: CGPoint(x: c3 + 6, y: rect.minY + 43))
         }
+    }
+
+    private static func drawTechnicalPage(project: GasProject, analysis: ProjectAnalysis, cg: CGContext, page: CGSize) {
+        NSString(string: "TEKNİK DETAY / SAHA KANITI / REVİZYON")
+            .draw(at: CGPoint(x: 34, y: 30), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 16)])
+        var left: [String] = ["CİHAZLAR"]
+        for d in analysis.devices.prefix(14) {
+            var line = "• \(d.label) • \(d.type.title)"
+            if let kw = d.capacityKW { line += String(format: " • %.1f kW", kw) }
+            if let z = d.elevationM { line += String(format: " • kot %.2f m", z) }
+            if let w = d.worldPosition { line += String(format: " • AR(%.2f, %.2f, %.2f)", w.x,w.y,w.z) }
+            if let code = d.gasLineCode { line += " • GL:\(code)" }
+            left.append(line)
+        }
+        left += ["", "BORU SEGMENTLERİ"]
+        for p in analysis.pipes.prefix(18) {
+            let z1 = p.startElevationM.map { String(format: "%.2f", $0) } ?? "—"
+            let z2 = p.endElevationM.map { String(format: "%.2f", $0) } ?? "—"
+            left.append(String(format: "• Ø%d • %.2f m • kot %@→%@", p.diameterMM, p.lengthMeters, z1, z2))
+        }
+
+        var right: [String] = ["KURAL / ONAY"]
+        if let rule = project.ruleProfile {
+            right += ["• \(rule.authority)", "• \(rule.title) / \(rule.revision)", "• Kaynak SHA: \(rule.sourceDocumentHashSHA256.map { String($0.prefix(16)) } ?? "—")", "• Mühendis doğrulaması: \(rule.engineerVerified ? "evet" : "hayır")"]
+        } else { right.append("• Kural profili yok") }
+        right += ["", "AR SAHA KAYDI"]
+        if let ar = project.arCaptureArtifact {
+            right += ["• Oturum: \(ar.sessionID.uuidString.prefix(8))", "• \(ar.frameCount) kare / \(String(format: "%.1f", ar.durationSeconds)) sn", "• Depth kare: \(ar.depthFrameCount)", "• Depth dosyası: \(ar.depthFileName == nil ? "yok" : "var")"]
+        } else { right.append("• AR kaydı yok") }
+        right += ["", "SAHA KANITLARI"]
+        for record in (project.fieldChecklist?.records ?? []).filter({ $0.evidenceFileName != nil }).prefix(10) {
+            right.append("• \(record.kind.title) • SHA \(record.evidenceSHA256.map { String($0.prefix(12)) } ?? "—")")
+        }
+        right += ["", "MEKÂNSAL ENGELLER"]
+        for obstacle in (project.spatialObstacles ?? []).prefix(8) {
+            right.append(String(format: "• %@ • %@ • %.2f×%.2f m", obstacle.kind.title, obstacle.label, obstacle.widthMeters, obstacle.depthMeters))
+        }
+        right += ["", "SON REVİZYONLAR"]
+        for revision in (project.revisions ?? []).prefix(8) {
+            right.append("• \(DateFormatter.localizedString(from: revision.createdAt, dateStyle: .short, timeStyle: .short)) • \(revision.note)")
+        }
+
+        NSString(string: left.joined(separator: "\n")).draw(
+            in: CGRect(x: 34, y: 66, width: 500, height: 475),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 7.2)]
+        )
+        NSString(string: right.joined(separator: "\n")).draw(
+            in: CGRect(x: 550, y: 66, width: 258, height: 475),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 7.0)]
+        )
     }
 
     private static func drawFooter(cg: CGContext, page: CGSize) {
