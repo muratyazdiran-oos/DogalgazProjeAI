@@ -28,10 +28,23 @@ final class ProjectStore: ObservableObject {
         guard let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
         let previous = projects[index]
         var item = project
-        let engineeringChanged = previous.analysis != item.analysis || previous.roomScan != item.roomScan || previous.engineeringSettings != item.engineeringSettings || previous.ruleProfile != item.ruleProfile || previous.calibration != item.calibration
-        if engineeringChanged {
+        let engineeringChanged =
+            previous.analysis != item.analysis ||
+            previous.roomScan != item.roomScan ||
+            previous.engineeringSettings != item.engineeringSettings ||
+            previous.ruleProfile != item.ruleProfile ||
+            previous.calibration != item.calibration ||
+            previous.spatialObstacles != item.spatialObstacles ||
+            previous.arRoomAlignment != item.arRoomAlignment ||
+            previous.fieldChecklist != item.fieldChecklist ||
+            previous.arCaptureArtifact != item.arCaptureArtifact ||
+            previous.cloudArtifacts != item.cloudArtifacts
+        let approvalHashMismatch =
+            item.approvalWorkflow?.status == .approved &&
+            item.approvalWorkflow?.contentHashSHA256 != item.engineeringContentHashSHA256()
+        if engineeringChanged || approvalHashMismatch {
             var history = item.revisions ?? previous.revisions ?? []
-            history.insert(ProjectRevision(note: "Otomatik revizyon", analysis: previous.analysis, roomScan: previous.roomScan, engineeringSettings: previous.engineeringSettings, ruleProfile: previous.ruleProfile, calibration: previous.calibration, floors: previous.floors, activeFloorID: previous.activeFloorID, reviewState: previous.reviewState, approvalWorkflow: previous.approvalWorkflow), at: 0)
+            history.insert(ProjectRevision(note: "Otomatik revizyon", analysis: previous.analysis, roomScan: previous.roomScan, engineeringSettings: previous.engineeringSettings, ruleProfile: previous.ruleProfile, calibration: previous.calibration, floors: previous.floors, activeFloorID: previous.activeFloorID, reviewState: previous.reviewState, approvalWorkflow: previous.approvalWorkflow, spatialObstacles: previous.spatialObstacles, projectWorkflow: previous.projectWorkflow, arRoomAlignment: previous.arRoomAlignment, cloudArtifacts: previous.cloudArtifacts), at: 0)
             item.revisions = Array(history.prefix(50))
             if item.approvalWorkflow?.status == .approved {
                 item.approvalWorkflow?.status = .engineerReviewed
