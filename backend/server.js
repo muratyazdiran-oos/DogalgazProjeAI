@@ -19,7 +19,7 @@ const appApiToken = process.env.APP_API_TOKEN?.trim() || "";
 const teamAuthSecret = process.env.TEAM_AUTH_SECRET?.trim() || "";
 const databaseURL = process.env.DATABASE_URL?.trim() || "";
 const isProduction = process.env.NODE_ENV === "production";
-const apiVersion = "2.1.0";
+const apiVersion = "2.2.0";
 const uploadDir = path.join(os.tmpdir(), "gas-ai"); fs.mkdirSync(uploadDir,{recursive:true});
 const artifactStorageDir = process.env.ARTIFACT_STORAGE_DIR?.trim() || path.join(process.cwd(),"data","artifacts"); fs.mkdirSync(artifactStorageDir,{recursive:true});
 
