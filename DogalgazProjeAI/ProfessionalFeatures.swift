@@ -268,8 +268,9 @@ extension GasProject {
             let ruleProfile: RuleProfileDocument?
             let spatialObstacles: [SpatialObstacle]?
             let arRoomAlignment: ARRoomAlignment?
+            let evidenceManifest: [String]
         }
-        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, spatialObstacles: spatialObstacles, arRoomAlignment: arRoomAlignment)
+        let payload = Payload(analysis: resolvedAnalysis, roomScan: roomScan, engineeringSettings: engineeringSettings, ruleProfile: ruleProfile, spatialObstacles: spatialObstacles, arRoomAlignment: arRoomAlignment, evidenceManifest: evidenceManifestForApproval)
         guard let data = try? JSONEncoder.pretty.encode(payload) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
@@ -446,7 +447,8 @@ struct ProfessionalToolsView: View {
                 NavigationLink("Gerçek AR Saha Kaydı") { ARFieldCaptureView(project: project, onSave: save) }
                 NavigationLink("AR Kayıt Tanılama") { ARCaptureDiagnosticsView(project: project) }
                 NavigationLink("AI → AR 3B Eşleme") { ARWorldMappingView(project: project, onSave: save) }
-                NavigationLink("AR ↔ RoomPlan Kalibrasyonu") { ARRoomAlignmentView(project: project, onSave: save) }
+                NavigationLink("AR ↔ RoomPlan Kalibrasyonu") { MultiPointARRoomAlignmentView(project: project, onSave: save) }
+                NavigationLink("3B Akıllı Güzergâh") { Route3DPlannerView(project: project, onSave: save) }
                 NavigationLink("3B Kot Düzenleme") { ElevationEditorView(project: project, onSave: save) }
                 NavigationLink("Kolon / Şaft / Engel") { SpatialObstacleEditorView(project: project, onSave: save) }
                 NavigationLink("Boru Çapı Önerisi") { PipeSizingAdvisorView(project: project, onSave: save) }
