@@ -12,6 +12,17 @@ struct ARCameraPoseSample: Codable, Hashable {
     var transform: [Float]
     var intrinsics: [Float]
     var depthAvailable: Bool
+    var imageWidth: Int? = nil
+    var imageHeight: Int? = nil
+}
+
+struct ARDepthSample: Codable, Hashable {
+    var timeSeconds: Double
+    var sourceWidth: Int
+    var sourceHeight: Int
+    var gridWidth: Int
+    var gridHeight: Int
+    var meters: [Float]
 }
 
 struct ARCaptureArtifact: Codable, Hashable {
@@ -23,6 +34,9 @@ struct ARCaptureArtifact: Codable, Hashable {
     var frameCount: Int
     var depthFrameCount: Int
     var durationSeconds: Double
+    var depthFileName: String? = nil
+    var sceneDepthSupported: Bool? = nil
+    var videoOrientationDegrees: Int? = nil
 }
 
 extension GasProject {
@@ -47,6 +61,15 @@ enum ARCaptureStore {
         try data.write(to: url, options: [.atomic, .completeFileProtection])
         return name
     }
+
+    static func writeDepthSamples(_ samples: [ARDepthSample], projectID: UUID, sessionID: UUID) throws -> String? {
+        guard !samples.isEmpty else { return nil }
+        let name = "depth-\(sessionID.uuidString).json"
+        let url = try directory(projectID: projectID).appendingPathComponent(name)
+        let data = try JSONEncoder.pretty.encode(samples)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        return name
+    }
 }
 
 @MainActor
@@ -66,6 +89,8 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
     private var wallClockStartedAt: Date?
     private var outputURL: URL?
     private var samples: [ARCameraPoseSample] = []
+    private var depthSamples: [ARDepthSample] = []
+    private var lastDepthSampleTime: Double = -10
     private var sessionID = UUID()
     private var projectID: UUID?
     private var finishHandler: ((Result<ARCaptureArtifact, Error>) -> Void)?
@@ -121,6 +146,7 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
             ]
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
             input.expectsMediaDataInRealTime = true
+            input.transform = Self.currentVideoTransform()
             guard writer.canAdd(input) else { throw RecorderError.writerSetup }
             writer.add(input)
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
@@ -137,6 +163,8 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
             startedAtTimestamp = nil
             wallClockStartedAt = .now
             samples.removeAll(keepingCapacity: true)
+            depthSamples.removeAll(keepingCapacity: true)
+            lastDepthSampleTime = -10
             frameCount = 0
             depthFrameCount = 0
             elapsed = 0
@@ -157,6 +185,7 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
         let started = wallClockStartedAt ?? .now
         let duration = elapsed
         let sampleSnapshot = samples
+        let depthSnapshot = depthSamples
         let frames = frameCount
         let depthFrames = depthFrameCount
         let videoName = outputURL.lastPathComponent
@@ -167,6 +196,7 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                 do {
                     if writer.status != .completed { throw writer.error ?? RecorderError.finishFailed }
                     let trajectory = try ARCaptureStore.writeTrajectory(sampleSnapshot, projectID: projectID, sessionID: captureID)
+                    let depthFile = try ARCaptureStore.writeDepthSamples(depthSnapshot, projectID: projectID, sessionID: captureID)
                     let artifact = ARCaptureArtifact(
                         sessionID: captureID,
                         videoFileName: videoName,
@@ -175,7 +205,10 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                         finishedAt: .now,
                         frameCount: frames,
                         depthFrameCount: depthFrames,
-                        durationSeconds: duration
+                        durationSeconds: duration,
+                        depthFileName: depthFile,
+                        sceneDepthSupported: ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth),
+                        videoOrientationDegrees: Self.currentVideoOrientationDegrees()
                     )
                     self.writer = nil; self.writerInput = nil; self.adaptor = nil
                     completion(.success(artifact))
@@ -216,9 +249,55 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                 intrinsics: [intrinsics.columns.0.x, intrinsics.columns.0.y, intrinsics.columns.0.z,
                              intrinsics.columns.1.x, intrinsics.columns.1.y, intrinsics.columns.1.z,
                              intrinsics.columns.2.x, intrinsics.columns.2.y, intrinsics.columns.2.z],
-                depthAvailable: hasDepth
+                depthAvailable: hasDepth,
+                imageWidth: CVPixelBufferGetWidth(frame.capturedImage),
+                imageHeight: CVPixelBufferGetHeight(frame.capturedImage)
             ))
+            if hasDepth, relative - lastDepthSampleTime >= 0.5,
+               let depth = frame.smoothedSceneDepth ?? frame.sceneDepth,
+               let sample = Self.depthSample(from: depth.depthMap, timeSeconds: relative) {
+                depthSamples.append(sample)
+                lastDepthSampleTime = relative
+            }
         }
+    }
+
+    private static func depthSample(from depthMap: CVPixelBuffer, timeSeconds: Double) -> ARDepthSample? {
+        guard CVPixelBufferGetPixelFormatType(depthMap) == kCVPixelFormatType_DepthFloat32 else { return nil }
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(depthMap) else { return nil }
+        let sourceWidth = CVPixelBufferGetWidth(depthMap)
+        let sourceHeight = CVPixelBufferGetHeight(depthMap)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+        let gridWidth = min(32, sourceWidth)
+        let gridHeight = min(24, sourceHeight)
+        var values: [Float] = []
+        values.reserveCapacity(gridWidth * gridHeight)
+        for gy in 0..<gridHeight {
+            let sy = min(sourceHeight - 1, Int((Double(gy) + 0.5) * Double(sourceHeight) / Double(gridHeight)))
+            let row = base.advanced(by: sy * bytesPerRow).assumingMemoryBound(to: Float.self)
+            for gx in 0..<gridWidth {
+                let sx = min(sourceWidth - 1, Int((Double(gx) + 0.5) * Double(sourceWidth) / Double(gridWidth)))
+                let v = row[sx]
+                values.append(v.isFinite && v > 0 ? v : 0)
+            }
+        }
+        return ARDepthSample(timeSeconds: timeSeconds, sourceWidth: sourceWidth, sourceHeight: sourceHeight, gridWidth: gridWidth, gridHeight: gridHeight, meters: values)
+    }
+
+    private static func currentVideoOrientationDegrees() -> Int {
+        switch UIDevice.current.orientation {
+        case .portrait: return 90
+        case .portraitUpsideDown: return -90
+        case .landscapeRight: return 180
+        default: return 0
+        }
+    }
+
+    private static func currentVideoTransform() -> CGAffineTransform {
+        let degrees = currentVideoOrientationDegrees()
+        return CGAffineTransform(rotationAngle: CGFloat(Double(degrees) * .pi / 180))
     }
 
     enum RecorderError: LocalizedError {
@@ -335,19 +414,40 @@ struct GasProject3DView: UIViewRepresentable {
 
         for pipe in analysis.pipes {
             let a = mapper.meters(pipe.start), b = mapper.meters(pipe.end)
-            let y = floorHeight(for: pipe.floorID) + 1.7
-            let start = SCNVector3(Float(a.x), Float(y), Float(a.y))
-            let end = SCNVector3(Float(b.x), Float(y), Float(b.y))
+            let base = floorHeight(for: pipe.floorID)
+            let startY = base + (pipe.startElevationM ?? 1.7)
+            let endY = base + (pipe.endElevationM ?? (pipe.startElevationM ?? 1.7) + (pipe.elevationDeltaM ?? 0))
+            let start = SCNVector3(Float(a.x), Float(startY), Float(a.y))
+            let end = SCNVector3(Float(b.x), Float(endY), Float(b.y))
             scene.rootNode.addChildNode(cylinderNode(from: start, to: end, radius: max(0.012, Double(pipe.diameterMM) / 2000.0), color: .systemYellow))
         }
 
         for device in analysis.devices {
             let m = mapper.meters(device.position)
-            let y = floorHeight(for: device.floorID) + 1.1
+            let y = floorHeight(for: device.floorID) + (device.elevationM ?? 1.1)
             let node = SCNNode(geometry: SCNBox(width: 0.32, height: 0.42, length: 0.18, chamferRadius: 0.03))
             node.position = SCNVector3(Float(m.x), Float(y), Float(m.y))
             node.geometry?.firstMaterial?.diffuse.contents = color(for: device.type)
             node.name = device.label
+            scene.rootNode.addChildNode(node)
+        }
+
+        for wall in scan.walls {
+            let center = SCNVector3(Float(wall.centerX), Float(wall.heightMeters / 2), Float(wall.centerZ))
+            let box = SCNBox(width: CGFloat(wall.lengthMeters), height: CGFloat(wall.heightMeters), length: 0.04, chamferRadius: 0)
+            box.firstMaterial?.diffuse.contents = UIColor.systemGray.withAlphaComponent(0.18)
+            let node = SCNNode(geometry: box)
+            node.position = center
+            node.eulerAngles.y = Float(-wall.yawRadians)
+            scene.rootNode.addChildNode(node)
+        }
+
+        for opening in scan.openings {
+            let box = SCNBox(width: CGFloat(opening.widthMeters), height: CGFloat(opening.heightMeters), length: 0.06, chamferRadius: 0.01)
+            box.firstMaterial?.diffuse.contents = UIColor.systemCyan.withAlphaComponent(0.30)
+            let node = SCNNode(geometry: box)
+            node.position = SCNVector3(Float(opening.centerX), Float(opening.heightMeters / 2), Float(opening.centerZ))
+            node.eulerAngles.y = Float(-opening.yawRadians)
             scene.rootNode.addChildNode(node)
         }
 
@@ -374,7 +474,7 @@ struct GasProject3DView: UIViewRepresentable {
 
     private func floorHeight(for floorID: UUID?) -> Double {
         guard let floorID, let floor = project.floors?.first(where: { $0.id == floorID }) else { return 0 }
-        return Double(floor.level) * 3.0
+        return Double(floor.level) * max(project.roomScan?.heightMeters ?? 3.0, 2.2)
     }
 
     private func color(for type: GasDeviceType) -> UIColor {
