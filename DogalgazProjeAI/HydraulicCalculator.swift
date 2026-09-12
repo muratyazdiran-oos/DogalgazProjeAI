@@ -205,7 +205,8 @@ enum HydraulicCalculator {
 
     private static func segmentHydraulics(pipe: PipeSegment, flowM3h: Double, settings: EngineeringSettings, automaticMinorLossK: Double = 0) -> (velocityMS: Double?, pressureDropMbar: Double?) {
         guard pipe.diameterMM > 0, pipe.lengthMeters > 0, flowM3h >= 0 else { return (nil, nil) }
-        let d = Double(pipe.diameterMM) / 1000
+        let internalMM = pipe.internalDiameterMM ?? PipeDimensionCatalog.bestInternalDiameter(material: settings.pipeMaterial, nominalMM: pipe.diameterMM) ?? Double(pipe.diameterMM)
+        let d = internalMM / 1000
         let q = flowM3h / 3600
         let area = Double.pi * d * d / 4
         guard area > 0 else { return (nil, nil) }
