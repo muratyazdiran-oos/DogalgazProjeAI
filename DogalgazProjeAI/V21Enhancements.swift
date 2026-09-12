@@ -110,8 +110,94 @@ struct SpatialObstacle: Identifiable, Codable, Hashable {
     var maxElevationM: Double? = nil
 }
 
+struct ARRoomAlignment: Codable, Hashable {
+    var arPointA: WorldPoint3D
+    var roomPointA: WorldPoint3D
+    var arPointB: WorldPoint3D
+    var roomPointB: WorldPoint3D
+    var calibratedAt: Date = .now
+
+    var scale: Double {
+        let arD = hypot(arPointB.x-arPointA.x, arPointB.z-arPointA.z)
+        let roomD = hypot(roomPointB.x-roomPointA.x, roomPointB.z-roomPointA.z)
+        return arD > 0.01 ? roomD/arD : 1
+    }
+
+    var rotationRadians: Double {
+        let a1 = atan2(arPointB.z-arPointA.z, arPointB.x-arPointA.x)
+        let a2 = atan2(roomPointB.z-roomPointA.z, roomPointB.x-roomPointA.x)
+        return a2-a1
+    }
+
+    func roomPoint(from ar: WorldPoint3D) -> WorldPoint3D {
+        let dx = ar.x-arPointA.x
+        let dz = ar.z-arPointA.z
+        let c = cos(rotationRadians), s = sin(rotationRadians)
+        let rx = (dx*c - dz*s) * scale
+        let rz = (dx*s + dz*c) * scale
+        return .init(x: roomPointA.x+rx, y: roomPointA.y+(ar.y-arPointA.y)*scale, z: roomPointA.z+rz)
+    }
+}
+
+struct CloudArtifactReference: Identifiable, Codable, Hashable {
+    var id: String { remoteID }
+    var remoteID: String
+    var kind: String
+    var fileName: String
+    var sha256: String
+    var byteCount: Int64
+    var uploadedAt: Date
+}
+
+struct ARRoomAlignmentView: View {
+    @State var project: GasProject
+    let onSave: (GasProject) -> Void
+    @State private var arAx=0.0; @State private var arAz=0.0
+    @State private var roomAx=0.0; @State private var roomAz=0.0
+    @State private var arBx=1.0; @State private var arBz=0.0
+    @State private var roomBx=1.0; @State private var roomBz=0.0
+
+    var body: some View {
+        Form {
+            Section("Referans A") {
+                HStack { field("AR X", $arAx); field("AR Z", $arAz) }
+                HStack { field("Plan X m", $roomAx); field("Plan Z m", $roomAz) }
+            }
+            Section("Referans B") {
+                HStack { field("AR X", $arBx); field("AR Z", $arBz) }
+                HStack { field("Plan X m", $roomBx); field("Plan Z m", $roomBz) }
+            }
+            Section {
+                Button("AR ↔ RoomPlan Kalibrasyonunu Kaydet") {
+                    project.arRoomAlignment = ARRoomAlignment(
+                        arPointA: .init(x: arAx,y:0,z:arAz), roomPointA: .init(x: roomAx,y:0,z:roomAz),
+                        arPointB: .init(x: arBx,y:0,z:arBz), roomPointB: .init(x: roomBx,y:0,z:roomBz)
+                    )
+                    onSave(project)
+                }
+                Text("İki fiziksel referans noktası aynı saha üzerinde AR ve RoomPlan metre koordinatlarıyla girilir. Böylece cihaz AR konumları proje koordinatına taşınır.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("AR ↔ RoomPlan")
+        .onAppear {
+            if let a=project.arRoomAlignment {
+                arAx=a.arPointA.x; arAz=a.arPointA.z; roomAx=a.roomPointA.x; roomAz=a.roomPointA.z
+                arBx=a.arPointB.x; arBz=a.arPointB.z; roomBx=a.roomPointB.x; roomBz=a.roomPointB.z
+            }
+        }
+    }
+    private func field(_ title:String,_ value:Binding<Double>)->some View {
+        TextField(title,value:value,format:.number.precision(.fractionLength(3))).keyboardType(.decimalPad)
+    }
+}
+
 enum ARWorldProjection {
     static func project(normalizedVideoPoint: Point2D, timeSeconds: Double, project: GasProject) throws -> WorldPoint3D {
+        try project(normalizedVideoBox: BoundingBox2D(x: normalizedVideoPoint.x-0.02, y: normalizedVideoPoint.y-0.02, width: 0.04, height: 0.04), timeSeconds: timeSeconds, project: project)
+    }
+
+    static func project(normalizedVideoBox box: BoundingBox2D, timeSeconds: Double, project: GasProject) throws -> WorldPoint3D {
         guard let artifact = project.arCaptureArtifact,
               let depthFileName = artifact.depthFileName else { throw ProjectionError.noDepth }
         let dir = project.arCaptureDirectory
@@ -125,17 +211,34 @@ enum ARWorldProjection {
               abs(pose.timeSeconds-timeSeconds) <= 0.25,
               pose.transform.count >= 16, pose.intrinsics.count >= 9 else { throw ProjectionError.missingSample }
 
-        let sensorPoint = unrotate(normalizedVideoPoint, degrees: artifact.videoOrientationDegrees ?? 0)
-        let gx = min(max(Int((sensorPoint.x * Double(depth.gridWidth)).rounded(.down)), 0), depth.gridWidth - 1)
-        let gy = min(max(Int((sensorPoint.y * Double(depth.gridHeight)).rounded(.down)), 0), depth.gridHeight - 1)
-        let idx = gy * depth.gridWidth + gx
-        guard depth.meters.indices.contains(idx), depth.meters[idx].isFinite, depth.meters[idx] > 0 else { throw ProjectionError.invalidDepth }
-        let z = depth.meters[idx]
+        let centerPoint = unrotate(box.center, degrees: artifact.videoOrientationDegrees ?? 0)
+        let p1 = unrotate(.init(x: box.x + box.width*0.2, y: box.y + box.height*0.2), degrees: artifact.videoOrientationDegrees ?? 0)
+        let p2 = unrotate(.init(x: box.x + box.width*0.8, y: box.y + box.height*0.8), degrees: artifact.videoOrientationDegrees ?? 0)
+        let minX = max(0, min(p1.x,p2.x)), maxX = min(1, max(p1.x,p2.x))
+        let minY = max(0, min(p1.y,p2.y)), maxY = min(1, max(p1.y,p2.y))
+        let gx0 = max(0, min(depth.gridWidth-1, Int(floor(minX * Double(depth.gridWidth)))))
+        let gx1 = max(0, min(depth.gridWidth-1, Int(floor(maxX * Double(depth.gridWidth)))))
+        let gy0 = max(0, min(depth.gridHeight-1, Int(floor(minY * Double(depth.gridHeight)))))
+        let gy1 = max(0, min(depth.gridHeight-1, Int(floor(maxY * Double(depth.gridHeight)))))
+        var validDepths:[Float] = []
+        if gx0 <= gx1 && gy0 <= gy1 {
+            for gy in gy0...gy1 {
+                for gx in gx0...gx1 {
+                    let idx = gy * depth.gridWidth + gx
+                    guard depth.meters.indices.contains(idx) else { continue }
+                    let v=depth.meters[idx]
+                    if v.isFinite && v > 0.1 && v < 20 { validDepths.append(v) }
+                }
+            }
+        }
+        guard !validDepths.isEmpty else { throw ProjectionError.invalidDepth }
+        validDepths.sort()
+        let z = validDepths[validDepths.count/2]
 
         let imageWidth = Float(pose.imageWidth ?? depth.sourceWidth)
         let imageHeight = Float(pose.imageHeight ?? depth.sourceHeight)
-        let u = Float(sensorPoint.x) * imageWidth
-        let v = Float(sensorPoint.y) * imageHeight
+        let u = Float(centerPoint.x) * imageWidth
+        let v = Float(centerPoint.y) * imageHeight
         let fx = pose.intrinsics[0], fy = pose.intrinsics[4], cx = pose.intrinsics[6], cy = pose.intrinsics[7]
         guard fx != 0, fy != 0 else { throw ProjectionError.invalidIntrinsics }
 
@@ -157,9 +260,15 @@ enum ARWorldProjection {
         for i in analysis.devices.indices {
             guard let time = analysis.devices[i].videoTimeSeconds,
                   let box = analysis.devices[i].videoBoundingBox,
-                  let world = try? ARWorldProjection.project(normalizedVideoPoint: box.center, timeSeconds: time, project: project) else { continue }
+                  let world = try? ARWorldProjection.project(normalizedVideoBox: box, timeSeconds: time, project: project) else { continue }
             analysis.devices[i].worldPosition = world
-            analysis.devices[i].elevationM = world.y
+            if let alignment = project.arRoomAlignment, let scan = project.roomScan {
+                let roomWorld = alignment.roomPoint(from: world)
+                analysis.devices[i].position = MetricProjectMapper(scan: scan).normalized(x: roomWorld.x, y: roomWorld.z)
+                analysis.devices[i].elevationM = roomWorld.y
+            } else {
+                analysis.devices[i].elevationM = world.y
+            }
             changed = true
         }
         if changed {
