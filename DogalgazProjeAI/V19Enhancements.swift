@@ -1,7 +1,7 @@
 import SwiftUI
 import ARKit
 import SceneKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import UIKit
 import Foundation
 
