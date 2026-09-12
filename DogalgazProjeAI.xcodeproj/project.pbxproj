@@ -1,0 +1,135 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		191111111111111111111111 /* V19Enhancements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192222222222222222222222 /* V19Enhancements.swift */; };
+		181111111111111111111111 /* V18Enhancements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182222222222222222222222 /* V18Enhancements.swift */; };
+		171111111111111111111111 /* V17Enhancements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172222222222222222222222 /* V17Enhancements.swift */; };
+		F61111111111111111111111 /* DeviceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61222222222222222222222 /* DeviceCatalog.swift */; };
+		F62111111111111111111111 /* DeviceCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62222222222222222222222 /* DeviceCatalogView.swift */; };
+		E51111111111111111111111 /* AdvancedFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52222222222222222222222 /* AdvancedFeatures.swift */; };
+		D11111111111111111111111 /* ProfessionalFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D22222222222222222222222 /* ProfessionalFeatures.swift */; };
+		C11111111111111111111111 /* ProductionReadinessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22222222222222222222222 /* ProductionReadinessView.swift */; };
+		C33333333333333333333333 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C44444444444444444444444 /* PrivacyInfo.xcprivacy */; };
+		40286767B57BA778F1D20428 /* AIProjectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5111A7CC345330B6840CA8 /* AIProjectService.swift */; };
+		EEB6DEF4297C2B12C1ECBEA9 /* APIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7259CB59A92C99D6054A818C /* APIConfig.swift */; };
+		D11E20319904EC1A5D453A7D /* APISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F132569FA5F90E6266765419 /* APISettingsView.swift */; };
+		86230801B8684E6AC2357E10 /* DogalgazProjeAIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383A17124B00A2D6FF8F6985 /* DogalgazProjeAIApp.swift */; };
+		A42523CD4BC6845691B6409B /* EngineeringCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8296C16A95FFCBD1018FBEAE /* EngineeringCalculator.swift */; };
+		59F6BF64F601EF55579C44F6 /* EngineeringSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91E6C38E455BA7672F9AE877 /* EngineeringSummaryView.swift */; };
+		581027ED88D36CBD414F3488 /* FeatureAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B1092A95DE92B38A03B64A /* FeatureAccess.swift */; };
+		7DBAE47CEB47B9DDE60E8422 /* ManualRoomMeasureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C78808DA9C681421462A4F6 /* ManualRoomMeasureView.swift */; };
+		FD14EB42E92B86B0BDE42D24 /* MaterialSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23BB295194A4E65ED35AE37 /* MaterialSummaryView.swift */; };
+		741685AD161B6210DD50A91F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A313C5D138D42831C2B4BEA /* Models.swift */; };
+		801F54815886D914ED43C6F8 /* NewProjectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FB560B41EAB69142A52C84 /* NewProjectView.swift */; };
+		44EF574B9372467E975B57AF /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B300F9BDEA2876AA3DEF87BC /* PDFExporter.swift */; };
+		DC6F225BE184556D9C334860 /* ProjectCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7AF124BD432D26C1589832 /* ProjectCanvasView.swift */; };
+		1E7F82AC1DE66108697336A8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D92F65D87A1C3E706D5ACC1 /* ProjectDetailView.swift */; };
+		D0DC9797A63A16D394665BE6 /* ProjectEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C58FF5984A872D5DFB941A /* ProjectEditorView.swift */; };
+		1F2501534BD24520BC865B07 /* ProjectJSONExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A95C64123EFF299D8CBE8C /* ProjectJSONExporter.swift */; };
+		9478371F6A923066EFDBCEAE /* ProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBC0CFE42AC0AF09390A3538 /* ProjectListView.swift */; };
+		8C2326E29B6DE1ECFDC27BB6 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C224C3A5EA9C0AD64698B76 /* ProjectStore.swift */; };
+		4829462428BBE666817D5333 /* ProjectValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FA7A4399EC019C5F919FFF /* ProjectValidation.swift */; };
+		7116D76D98B946EC95C0878E /* RoomGeometryOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0702A6537DC2C8398853A84 /* RoomGeometryOverlay.swift */; };
+		FA31A6FB9F0CDDDBC92C9766 /* RoomPlanScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6E40B644EC53C6836D909C1 /* RoomPlanScannerView.swift */; };
+		F76CA88C82246AA6FDBBD03D /* RoomScanMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A390B5A6B7B0AB6B984C389 /* RoomScanMerger.swift */; };
+		723B85CD6B3B0DEF74C87691 /* RoomScanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4578ADDB332CF6FEB025A33 /* RoomScanModels.swift */; };
+		6D822F30740267179038B26C /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80B82D1E9B6D87D608B2DC6 /* ShareSheet.swift */; };
+		189E5C70135633F9E017FB9A /* ValidationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45DD49390B2471DC5040904 /* ValidationCardView.swift */; };
+		28013CB1AAD0E177074237F6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 80682A187638843CB5D250F2 /* Assets.xcassets */; };
+		B11111111111111111111111 /* EngineeringSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111111 /* EngineeringSettings.swift */; };
+		B22222222222222222222222 /* HydraulicCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22222222222222222222222 /* HydraulicCalculator.swift */; };
+		B33333333333333333333333 /* EngineeringSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33333333333333333333333 /* EngineeringSettingsView.swift */; };
+		B44444444444444444444444 /* DeviceInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44444444444444444444444 /* DeviceInspectorView.swift */; };
+		B55555555555555555555555 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55555555555555555555555 /* KeychainStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		192222222222222222222222 /* V19Enhancements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V19Enhancements.swift; sourceTree = "<group>"; };
+		182222222222222222222222 /* V18Enhancements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V18Enhancements.swift; sourceTree = "<group>"; };
+		172222222222222222222222 /* V17Enhancements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V17Enhancements.swift; sourceTree = "<group>"; };
+		F61222222222222222222222 /* DeviceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCatalog.swift; sourceTree = "<group>"; };
+		F62222222222222222222222 /* DeviceCatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCatalogView.swift; sourceTree = "<group>"; };
+		E52222222222222222222222 /* AdvancedFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedFeatures.swift; sourceTree = "<group>"; };
+		D22222222222222222222222 /* ProfessionalFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfessionalFeatures.swift; sourceTree = "<group>"; };
+		C22222222222222222222222 /* ProductionReadinessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionReadinessView.swift; sourceTree = "<group>"; };
+		C44444444444444444444444 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		6C5111A7CC345330B6840CA8 /* AIProjectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProjectService.swift; sourceTree = "<group>"; };
+		7259CB59A92C99D6054A818C /* APIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfig.swift; sourceTree = "<group>"; };
+		F132569FA5F90E6266765419 /* APISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsView.swift; sourceTree = "<group>"; };
+		383A17124B00A2D6FF8F6985 /* DogalgazProjeAIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DogalgazProjeAIApp.swift; sourceTree = "<group>"; };
+		8296C16A95FFCBD1018FBEAE /* EngineeringCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineeringCalculator.swift; sourceTree = "<group>"; };
+		91E6C38E455BA7672F9AE877 /* EngineeringSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineeringSummaryView.swift; sourceTree = "<group>"; };
+		28B1092A95DE92B38A03B64A /* FeatureAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureAccess.swift; sourceTree = "<group>"; };
+		1C78808DA9C681421462A4F6 /* ManualRoomMeasureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualRoomMeasureView.swift; sourceTree = "<group>"; };
+		B23BB295194A4E65ED35AE37 /* MaterialSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaterialSummaryView.swift; sourceTree = "<group>"; };
+		1A313C5D138D42831C2B4BEA /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		58FB560B41EAB69142A52C84 /* NewProjectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewProjectView.swift; sourceTree = "<group>"; };
+		B300F9BDEA2876AA3DEF87BC /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
+		4D7AF124BD432D26C1589832 /* ProjectCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCanvasView.swift; sourceTree = "<group>"; };
+		8D92F65D87A1C3E706D5ACC1 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		74C58FF5984A872D5DFB941A /* ProjectEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectEditorView.swift; sourceTree = "<group>"; };
+		14A95C64123EFF299D8CBE8C /* ProjectJSONExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectJSONExporter.swift; sourceTree = "<group>"; };
+		BBC0CFE42AC0AF09390A3538 /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
+		0C224C3A5EA9C0AD64698B76 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		74FA7A4399EC019C5F919FFF /* ProjectValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectValidation.swift; sourceTree = "<group>"; };
+		B0702A6537DC2C8398853A84 /* RoomGeometryOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGeometryOverlay.swift; sourceTree = "<group>"; };
+		C6E40B644EC53C6836D909C1 /* RoomPlanScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPlanScannerView.swift; sourceTree = "<group>"; };
+		7A390B5A6B7B0AB6B984C389 /* RoomScanMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScanMerger.swift; sourceTree = "<group>"; };
+		D4578ADDB332CF6FEB025A33 /* RoomScanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScanModels.swift; sourceTree = "<group>"; };
+		B80B82D1E9B6D87D608B2DC6 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		E45DD49390B2471DC5040904 /* ValidationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationCardView.swift; sourceTree = "<group>"; };
+		80682A187638843CB5D250F2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		38ED30322495D02C679CFD76 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AEF63687048485D45524643C /* DogalgazProjeAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DogalgazProjeAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A11111111111111111111111 /* EngineeringSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineeringSettings.swift; sourceTree = "<group>"; };
+		A22222222222222222222222 /* HydraulicCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydraulicCalculator.swift; sourceTree = "<group>"; };
+		A33333333333333333333333 /* EngineeringSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineeringSettingsView.swift; sourceTree = "<group>"; };
+		A44444444444444444444444 /* DeviceInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInspectorView.swift; sourceTree = "<group>"; };
+		A55555555555555555555555 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7B8633C7EB6F5CB13673C25D = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (1DF401F405384E02A0BF02D3 /* DogalgazProjeAI */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
+		1DF401F405384E02A0BF02D3 /* DogalgazProjeAI */ = {isa = PBXGroup; children = (6C5111A7CC345330B6840CA8 /* AIProjectService.swift */, 7259CB59A92C99D6054A818C /* APIConfig.swift */, F132569FA5F90E6266765419 /* APISettingsView.swift */, 383A17124B00A2D6FF8F6985 /* DogalgazProjeAIApp.swift */, 8296C16A95FFCBD1018FBEAE /* EngineeringCalculator.swift */, 91E6C38E455BA7672F9AE877 /* EngineeringSummaryView.swift */, 28B1092A95DE92B38A03B64A /* FeatureAccess.swift */, 1C78808DA9C681421462A4F6 /* ManualRoomMeasureView.swift */, B23BB295194A4E65ED35AE37 /* MaterialSummaryView.swift */, 1A313C5D138D42831C2B4BEA /* Models.swift */, 58FB560B41EAB69142A52C84 /* NewProjectView.swift */, B300F9BDEA2876AA3DEF87BC /* PDFExporter.swift */, 4D7AF124BD432D26C1589832 /* ProjectCanvasView.swift */, 8D92F65D87A1C3E706D5ACC1 /* ProjectDetailView.swift */, 74C58FF5984A872D5DFB941A /* ProjectEditorView.swift */, 14A95C64123EFF299D8CBE8C /* ProjectJSONExporter.swift */, BBC0CFE42AC0AF09390A3538 /* ProjectListView.swift */, 0C224C3A5EA9C0AD64698B76 /* ProjectStore.swift */, 74FA7A4399EC019C5F919FFF /* ProjectValidation.swift */, B0702A6537DC2C8398853A84 /* RoomGeometryOverlay.swift */, C6E40B644EC53C6836D909C1 /* RoomPlanScannerView.swift */, 7A390B5A6B7B0AB6B984C389 /* RoomScanMerger.swift */, D4578ADDB332CF6FEB025A33 /* RoomScanModels.swift */, B80B82D1E9B6D87D608B2DC6 /* ShareSheet.swift */, E45DD49390B2471DC5040904 /* ValidationCardView.swift */, A11111111111111111111111 /* EngineeringSettings.swift */, A22222222222222222222222 /* HydraulicCalculator.swift */, A33333333333333333333333 /* EngineeringSettingsView.swift */, A44444444444444444444444 /* DeviceInspectorView.swift */, F61222222222222222222222 /* DeviceCatalog.swift */, F62222222222222222222222 /* DeviceCatalogView.swift */, A55555555555555555555555 /* KeychainStore.swift */, C22222222222222222222222 /* ProductionReadinessView.swift */, D22222222222222222222222 /* ProfessionalFeatures.swift */, C44444444444444444444444 /* PrivacyInfo.xcprivacy */, E52222222222222222222222 /* AdvancedFeatures.swift */, 172222222222222222222222 /* V17Enhancements.swift */, 182222222222222222222222 /* V18Enhancements.swift */, 192222222222222222222222 /* V19Enhancements.swift */, 80682A187638843CB5D250F2 /* Assets.xcassets */, 38ED30322495D02C679CFD76 /* Info.plist */); path = DogalgazProjeAI; sourceTree = "<group>"; };
+		021F2B7F3E0C61452C987484 /* Products */ = {isa = PBXGroup; children = (AEF63687048485D45524643C /* DogalgazProjeAI.app */); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E8A3AD980EC179856012B7E /* DogalgazProjeAI */ = {isa = PBXNativeTarget; buildConfigurationList = CCBFB2F7B133DA12073314B0; buildPhases = (E4F78730D65EE9F55E2BAC2F, 7B8633C7EB6F5CB13673C25D, C52ABA055DA4D0050382EB56); buildRules = (); dependencies = (); name = DogalgazProjeAI; productName = DogalgazProjeAI; productReference = AEF63687048485D45524643C; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = {0E8A3AD980EC179856012B7E = {CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = B21C1D195CCB6F2828E1C10C; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 6CFC827E67DCAE34C72B9CED; productRefGroup = 021F2B7F3E0C61452C987484; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C52ABA055DA4D0050382EB56 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (28013CB1AAD0E177074237F6, C33333333333333333333333 /* PrivacyInfo.xcprivacy in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E4F78730D65EE9F55E2BAC2F = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (40286767B57BA778F1D20428 /* AIProjectService.swift in Sources */, EEB6DEF4297C2B12C1ECBEA9 /* APIConfig.swift in Sources */, D11E20319904EC1A5D453A7D /* APISettingsView.swift in Sources */, 86230801B8684E6AC2357E10 /* DogalgazProjeAIApp.swift in Sources */, A42523CD4BC6845691B6409B /* EngineeringCalculator.swift in Sources */, 59F6BF64F601EF55579C44F6 /* EngineeringSummaryView.swift in Sources */, 581027ED88D36CBD414F3488 /* FeatureAccess.swift in Sources */, 7DBAE47CEB47B9DDE60E8422 /* ManualRoomMeasureView.swift in Sources */, FD14EB42E92B86B0BDE42D24 /* MaterialSummaryView.swift in Sources */, 741685AD161B6210DD50A91F /* Models.swift in Sources */, 801F54815886D914ED43C6F8 /* NewProjectView.swift in Sources */, 44EF574B9372467E975B57AF /* PDFExporter.swift in Sources */, DC6F225BE184556D9C334860 /* ProjectCanvasView.swift in Sources */, 1E7F82AC1DE66108697336A8 /* ProjectDetailView.swift in Sources */, D0DC9797A63A16D394665BE6 /* ProjectEditorView.swift in Sources */, 1F2501534BD24520BC865B07 /* ProjectJSONExporter.swift in Sources */, 9478371F6A923066EFDBCEAE /* ProjectListView.swift in Sources */, 8C2326E29B6DE1ECFDC27BB6 /* ProjectStore.swift in Sources */, 4829462428BBE666817D5333 /* ProjectValidation.swift in Sources */, 7116D76D98B946EC95C0878E /* RoomGeometryOverlay.swift in Sources */, FA31A6FB9F0CDDDBC92C9766 /* RoomPlanScannerView.swift in Sources */, F76CA88C82246AA6FDBBD03D /* RoomScanMerger.swift in Sources */, 723B85CD6B3B0DEF74C87691 /* RoomScanModels.swift in Sources */, 6D822F30740267179038B26C /* ShareSheet.swift in Sources */, B11111111111111111111111 /* EngineeringSettings.swift in Sources */, B22222222222222222222222 /* HydraulicCalculator.swift in Sources */, B33333333333333333333333 /* EngineeringSettingsView.swift in Sources */, B44444444444444444444444 /* DeviceInspectorView.swift in Sources */, F61111111111111111111111 /* DeviceCatalog.swift in Sources */, F62111111111111111111111 /* DeviceCatalogView.swift in Sources */, B55555555555555555555555 /* KeychainStore.swift in Sources */, 189E5C70135633F9E017FB9A /* ValidationCardView.swift in Sources */, E51111111111111111111111 /* AdvancedFeatures.swift in Sources */, 171111111111111111111111 /* V17Enhancements.swift in Sources */, 181111111111111111111111 /* V18Enhancements.swift in Sources */, 191111111111111111111111 /* V19Enhancements.swift in Sources */, D11111111111111111111111 /* ProfessionalFeatures.swift in Sources */, C11111111111111111111111 /* ProductionReadinessView.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D877646E137D89570CFB8251 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; IPHONEOS_DEPLOYMENT_TARGET = 17.0; }; name = Debug; };
+		8871435814844F5947ADBB2C = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; IPHONEOS_DEPLOYMENT_TARGET = 17.0; }; name = Release; };
+		18DCB30A68F4AFA5DA444758 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 19; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = DogalgazProjeAI/Info.plist; MARKETING_VERSION = 1.9.0; PRODUCT_BUNDLE_IDENTIFIER = com.murat.dogalgazprojeai; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = "1"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		4E31F9F05639A422599E8F78 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 19; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = DogalgazProjeAI/Info.plist; MARKETING_VERSION = 1.9.0; PRODUCT_BUNDLE_IDENTIFIER = com.murat.dogalgazprojeai; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = "1"; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B21C1D195CCB6F2828E1C10C = {isa = XCConfigurationList; buildConfigurations = (D877646E137D89570CFB8251, 8871435814844F5947ADBB2C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		CCBFB2F7B133DA12073314B0 = {isa = XCConfigurationList; buildConfigurations = (18DCB30A68F4AFA5DA444758, 4E31F9F05639A422599E8F78); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}
