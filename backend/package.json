@@ -1,6 +1,6 @@
 {
   "name": "dogalgaz-proje-ai-backend",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "express-rate-limit": "8.7.0",
     "helmet": "8.3.0",
     "multer": "2.3.0",
-    "pg": "8.23.0"
+    "pg": "8.23.0",
+    "@aws-sdk/client-s3": "3.883.0"
   }
 }
