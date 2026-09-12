@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: node --check backend/server.js
-      - run: python3 scripts/quality-gates-v22.py
+      - run: python3 scripts/quality-gates-v23.py
       - run: node --test tests/backend-contract.test.mjs
       - name: Reject committed secrets
         run: |
