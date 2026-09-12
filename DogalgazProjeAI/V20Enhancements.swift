@@ -12,6 +12,7 @@ struct ARCaptureQualityReport: Hashable {
     let warnings: [String]
     let videoSHA256: String?
     let trajectorySHA256: String?
+    let depthSHA256: String?
 
     var grade: String {
         switch score {
@@ -69,6 +70,11 @@ enum ARCaptureInspector {
             warnings.append("AR video dosyası bulunamadı.")
         }
 
+        let depthURL = artifact.depthFileName.map { dir.appendingPathComponent($0) }
+        if artifact.sceneDepthSupported == true && artifact.depthFileName == nil {
+            score -= 10
+            warnings.append("Cihaz sceneDepth destekliyor ancak depth örnek dosyası oluşmamış.")
+        }
         return ARCaptureQualityReport(
             score: max(0, min(score, 100)),
             frameCount: frameCount,
@@ -77,7 +83,8 @@ enum ARCaptureInspector {
             maxCameraJumpMeters: maxJump,
             warnings: warnings,
             videoSHA256: sha256(url: videoURL),
-            trajectorySHA256: sha256(url: trajectoryURL)
+            trajectorySHA256: sha256(url: trajectoryURL),
+            depthSHA256: depthURL.flatMap(sha256)
         )
     }
 
@@ -94,6 +101,7 @@ enum ARCaptureInspector {
             return name
                 .replacingOccurrences(of: "ar-video-", with: "")
                 .replacingOccurrences(of: "trajectory-", with: "")
+                .replacingOccurrences(of: "depth-", with: "")
         }
 
         let sessions = grouped.compactMap { key, urls -> (String, Date, [URL])? in
@@ -152,6 +160,9 @@ struct ARCaptureDiagnosticsView: View {
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
                     Text("Trajectory SHA-256: \(report.trajectorySHA256 ?? "hesaplanamadı")")
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                    Text("Depth SHA-256: \(report.depthSHA256 ?? "depth yok")")
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
                 }
