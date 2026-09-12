@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 import RoomPlan
 import simd
 
@@ -55,7 +56,8 @@ struct RoomPlanScannerView: View {
     }
 }
 
-private final class RoomCaptureCoordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
+@objc(DogalgazRoomCaptureCoordinator)
+final class RoomCaptureCoordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
     weak var captureView: RoomCaptureView?
     var didRequestStop = false
     private let completion: (Result<CapturedRoom, Error>) -> Void
@@ -64,6 +66,13 @@ private final class RoomCaptureCoordinator: NSObject, RoomCaptureSessionDelegate
         self.completion = completion
         super.init()
     }
+
+    required init?(coder: NSCoder) {
+        self.completion = { _ in }
+        super.init()
+    }
+
+    func encode(with coder: NSCoder) {}
 
     func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
         if let error { completion(.failure(error)) }
