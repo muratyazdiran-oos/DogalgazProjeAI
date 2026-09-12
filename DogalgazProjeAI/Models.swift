@@ -103,6 +103,8 @@ struct PipeSegment: Identifiable, Codable, Hashable {
     var aiConfidence: Double? = nil
     var requiresReview: Bool? = nil
     var floorID: UUID? = nil
+    var startElevationM: Double? = nil
+    var endElevationM: Double? = nil
 }
 
 enum GasDeviceType: String, Codable, CaseIterable, Hashable {
@@ -154,6 +156,8 @@ struct GasDevice: Identifiable, Codable, Hashable {
     var modelConfidence: Double? = nil
     var modelCandidates: [DeviceModelCandidate]? = nil
     var modelVerifiedByUser: Bool? = nil
+    var elevationM: Double? = nil
+    var evidenceSHA256: String? = nil
 }
 
 struct DimensionLine: Identifiable, Codable, Hashable {
