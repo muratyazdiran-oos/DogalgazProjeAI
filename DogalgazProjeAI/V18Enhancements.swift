@@ -158,7 +158,7 @@ struct SpatialCaptureState: Codable, Hashable {
 // MARK: - Compliance advisor and safe auto-fixes
 
 struct ProjectImprovement: Identifiable, Hashable {
-    enum Kind: String, Hashable { case verifyModel, fillCatalogData, reviewPipe, completeChecklist, addMeasure, validateRules }
+    enum Kind: String, Hashable { case verifyModel, fillCatalogData, reviewPipe, completeChecklist, addMeasure, validateRules, mapAR, setElevation, sizePipes, defineObstacles }
     let id: String
     let kind: Kind
     let title: String
@@ -188,6 +188,17 @@ enum ProjectImprovementEngine {
         }
         let reviewPipes = project.analysis?.pipes.filter { $0.requiresReview == true }.count ?? 0
         if reviewPipes > 0 { result.append(.init(id: "pipes", kind: .reviewPipe, title: "\(reviewPipes) boruyu kontrol et", detail: "AI veya otomatik rota tarafından manuel kontrol işaretlenmiş segmentler var.", deviceID: nil)) }
+        let unmapped = project.analysis?.devices.filter { $0.videoTimeSeconds != nil && $0.videoBoundingBox != nil && $0.worldPosition == nil }.count ?? 0
+        if unmapped > 0 { result.append(.init(id: "ar-map", kind: .mapAR, title: "\(unmapped) cihazı AR 3B konumuna bağla", detail: "Depth ve trajectory varsa AI tespitleri gerçek AR dünya koordinatına projekte edilebilir.", deviceID: nil)) }
+        let noElevation = project.analysis?.pipes.filter { $0.startElevationM == nil || $0.endElevationM == nil }.count ?? 0
+        if noElevation > 0 { result.append(.init(id: "elevation", kind: .setElevation, title: "3B kotları tamamla", detail: "\(noElevation) boru segmentinde başlangıç/bitiş kotu eksik.", deviceID: nil)) }
+        if project.resolvedEngineeringSettings.maxVelocityMS != nil || project.resolvedEngineeringSettings.maxPressureDropMbar != nil {
+            let suggestions = PipeDiameterAdvisor.suggestions(for: project)
+            if !suggestions.isEmpty { result.append(.init(id: "diameters", kind: .sizePipes, title: "Boru çap önerilerini incele", detail: "\(suggestions.count) segment için doğrulanmış limitlerden ön çap önerisi üretilebilir.", deviceID: nil)) }
+        }
+        if project.roomScan != nil && (project.spatialObstacles ?? []).isEmpty {
+            result.append(.init(id: "obstacles", kind: .defineObstacles, title: "Kolon / şaft / engelleri işaretle", detail: "Akıllı güzergâhın kaçınması gereken saha engelleri henüz tanımlanmadı.", deviceID: nil))
+        }
         return result
     }
 
