@@ -206,11 +206,19 @@ final class CloudArtifactService: ObservableObject {
         if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField:"Authorization") }
         let (temp,response)=try await URLSession.shared.download(for:req)
         guard let http=response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw ArtifactError.server }
-        let data=try Data(contentsOf:temp)
-        let hash=SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()
+        guard let input=try? FileHandle(forReadingFrom:temp) else { throw ArtifactError.server }
+        defer { try? input.close() }
+        var hasher=SHA256()
+        while true {
+            guard let chunk=try input.read(upToCount:1024*1024), !chunk.isEmpty else { break }
+            hasher.update(data:chunk)
+        }
+        let hash=hasher.finalize().map{String(format:"%02x",$0)}.joined()
         guard hash == artifact.sha256 else { throw ArtifactError.hashMismatch }
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: destination, options:[.atomic,.completeFileProtection])
+        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+        try FileManager.default.moveItem(at: temp, to: destination)
+        try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: destination.path)
     }
 
     enum ArtifactError: LocalizedError {
