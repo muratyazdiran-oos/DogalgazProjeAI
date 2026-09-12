@@ -84,7 +84,7 @@ enum ARCaptureInspector {
             warnings: warnings,
             videoSHA256: sha256(url: videoURL),
             trajectorySHA256: sha256(url: trajectoryURL),
-            depthSHA256: depthURL.flatMap(sha256)
+            depthSHA256: depthURL.flatMap { sha256(url: $0) }
         )
     }
 
