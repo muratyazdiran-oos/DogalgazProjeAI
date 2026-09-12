@@ -446,6 +446,7 @@ struct ProfessionalToolsView: View {
                 NavigationLink("Gerçek AR Saha Kaydı") { ARFieldCaptureView(project: project, onSave: save) }
                 NavigationLink("AR Kayıt Tanılama") { ARCaptureDiagnosticsView(project: project) }
                 NavigationLink("AI → AR 3B Eşleme") { ARWorldMappingView(project: project, onSave: save) }
+                NavigationLink("AR ↔ RoomPlan Kalibrasyonu") { ARRoomAlignmentView(project: project, onSave: save) }
                 NavigationLink("3B Kot Düzenleme") { ElevationEditorView(project: project, onSave: save) }
                 NavigationLink("Kolon / Şaft / Engel") { SpatialObstacleEditorView(project: project, onSave: save) }
                 NavigationLink("Boru Çapı Önerisi") { PipeSizingAdvisorView(project: project, onSave: save) }
@@ -462,6 +463,7 @@ struct ProfessionalToolsView: View {
                 NavigationLink("Proje Atama / Durum") { ProjectWorkflowView(project: project, onSave: save) }
                 NavigationLink("Hesap ve Ekip Senkronizasyonu") { TeamSyncView(project: project, onSave: save) }
                 NavigationLink("Firma Yönetim Paneli") { EnterpriseDashboardView(project: project) }
+                NavigationLink("Kanıt Bulut Senkronu") { CloudArtifactSyncView(project: project, onSave: save) }
             }
             Section("CAD") {
                 Button("AutoCAD / GasLine DXF Dışa Aktar") {
