@@ -72,3 +72,32 @@ extension GasProject {
         engineeringSettings ?? .preliminary
     }
 }
+
+
+struct PipeDimensionPreset: Identifiable, Hashable {
+    let id: String
+    let material: PipeMaterial
+    let nominalLabel: String
+    let outerDiameterMM: Double
+    let wallThicknessMM: Double
+    var internalDiameterMM: Double { max(outerDiameterMM - 2 * wallThicknessMM, 0.1) }
+}
+
+enum PipeDimensionCatalog {
+    static let presets: [PipeDimensionPreset] = [
+        .init(id: "steel-21.3x2.6", material: .steel, nominalLabel: "DN15 / 1/2"", outerDiameterMM: 21.3, wallThicknessMM: 2.6),
+        .init(id: "steel-26.9x2.6", material: .steel, nominalLabel: "DN20 / 3/4"", outerDiameterMM: 26.9, wallThicknessMM: 2.6),
+        .init(id: "steel-33.7x3.2", material: .steel, nominalLabel: "DN25 / 1"", outerDiameterMM: 33.7, wallThicknessMM: 3.2),
+        .init(id: "copper-15x1", material: .copper, nominalLabel: "15x1", outerDiameterMM: 15, wallThicknessMM: 1),
+        .init(id: "copper-18x1", material: .copper, nominalLabel: "18x1", outerDiameterMM: 18, wallThicknessMM: 1),
+        .init(id: "copper-22x1", material: .copper, nominalLabel: "22x1", outerDiameterMM: 22, wallThicknessMM: 1),
+        .init(id: "copper-28x1", material: .copper, nominalLabel: "28x1", outerDiameterMM: 28, wallThicknessMM: 1)
+    ]
+
+    static func bestInternalDiameter(material: PipeMaterial, nominalMM: Int) -> Double? {
+        let candidates = presets.filter { $0.material == material }
+        guard !candidates.isEmpty else { return nil }
+        let best = candidates.min { abs($0.outerDiameterMM - Double(nominalMM)) < abs($1.outerDiameterMM - Double(nominalMM)) }
+        return best?.internalDiameterMM
+    }
+}
