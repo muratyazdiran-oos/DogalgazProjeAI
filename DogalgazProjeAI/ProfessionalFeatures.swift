@@ -449,6 +449,7 @@ struct ProfessionalToolsView: View {
                 NavigationLink("Revizyon Geçmişi") { RevisionHistoryView(project: project, onSave: save) }
             }
             Section("Ekip / Bulut") {
+                NavigationLink("Proje Atama / Durum") { ProjectWorkflowView(project: project, onSave: save) }
                 NavigationLink("Hesap ve Ekip Senkronizasyonu") { TeamSyncView(project: project, onSave: save) }
                 NavigationLink("Firma Yönetim Paneli") { EnterpriseDashboardView(project: project) }
             }
