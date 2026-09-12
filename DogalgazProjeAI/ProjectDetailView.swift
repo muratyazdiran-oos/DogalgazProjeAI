@@ -27,6 +27,21 @@ struct ProjectDetailView: View {
 
                 roomScanCard
 
+                HStack {
+                    NavigationLink { ARFieldCaptureView(project: project, onSave: { updated in project = updated; store.update(updated) }) } label: {
+                        Label("AR Saha Kaydı", systemImage: "arkit").frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered)
+                    NavigationLink { ARCaptureDiagnosticsView(project: project) } label: {
+                        Label("AR Tanılama", systemImage: "waveform.path.ecg").frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered)
+                }
+
+                if project.analysis != nil {
+                    NavigationLink { Project3DViewer(project: project) } label: {
+                        Label("3B Tesisat Görünümü", systemImage: "cube.transparent").frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered)
+                }
+
                 if let analysis = project.analysis {
                     confidenceCard(analysis)
                     ZStack {
