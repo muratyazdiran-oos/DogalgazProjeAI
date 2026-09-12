@@ -8,6 +8,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pg from "pg";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -19,9 +20,50 @@ const appApiToken = process.env.APP_API_TOKEN?.trim() || "";
 const teamAuthSecret = process.env.TEAM_AUTH_SECRET?.trim() || "";
 const databaseURL = process.env.DATABASE_URL?.trim() || "";
 const isProduction = process.env.NODE_ENV === "production";
-const apiVersion = "2.2.0";
+const apiVersion = "2.3.0";
 const uploadDir = path.join(os.tmpdir(), "gas-ai"); fs.mkdirSync(uploadDir,{recursive:true});
 const artifactStorageDir = process.env.ARTIFACT_STORAGE_DIR?.trim() || path.join(process.cwd(),"data","artifacts"); fs.mkdirSync(artifactStorageDir,{recursive:true});
+const s3Bucket = process.env.S3_ARTIFACT_BUCKET?.trim() || "";
+const s3Client = s3Bucket ? new S3Client({
+  region: process.env.S3_REGION?.trim() || "auto",
+  endpoint: process.env.S3_ENDPOINT?.trim() || undefined,
+  forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "1",
+  credentials: process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY ? {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY
+  } : undefined
+}) : null;
+const artifactStorageMode = s3Client ? "s3" : "local";
+async function storeArtifactFile(localPath,key){
+  if(s3Client){
+    await s3Client.send(new PutObjectCommand({Bucket:s3Bucket,Key:key,Body:fs.createReadStream(localPath),ContentType:"application/octet-stream"}));
+    await fs.promises.unlink(localPath);
+    return "s3:"+key;
+  }
+  const target=path.join(artifactStorageDir,key);
+  await fs.promises.mkdir(path.dirname(target),{recursive:true});
+  await fs.promises.rename(localPath,target);
+  return target;
+}
+async function pipeStoredArtifact(storagePath,res){
+  if(storagePath.startsWith("s3:")){
+    if(!s3Client)throw new Error("S3 storage not configured");
+    const key=storagePath.slice(3);
+    const out=await s3Client.send(new GetObjectCommand({Bucket:s3Bucket,Key:key}));
+    if(!out.Body)throw new Error("Artifact body missing");
+    out.Body.pipe(res);
+    return;
+  }
+  if(!fs.existsSync(storagePath))throw Object.assign(new Error("not found"),{code:"ENOENT"});
+  fs.createReadStream(storagePath).pipe(res);
+}
+async function deleteStoredArtifact(storagePath){
+  if(storagePath.startsWith("s3:")){
+    if(s3Client)await s3Client.send(new DeleteObjectCommand({Bucket:s3Bucket,Key:storagePath.slice(3)}));
+    return;
+  }
+  try{await fs.promises.unlink(storagePath);}catch(e){if(e?.code!=="ENOENT")throw e;}
+}
 
 if (isProduction && teamAuthSecret && !databaseURL) {
   console.error("Production ekip/bulut özelliği için DATABASE_URL (PostgreSQL) zorunludur.");
@@ -136,17 +178,18 @@ app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single
   if(!project||!await canWrite(project,req.teamUser)){fs.unlink(req.file.path,()=>{});return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});}
   const kind=String(req.body?.kind||"artifact").slice(0,40);
   const fileName=path.basename(String(req.body?.fileName||req.file.originalname||"artifact.bin")).slice(0,180);
-  const remoteID=crypto.randomUUID();
-  const dir=path.join(artifactStorageDir,id);fs.mkdirSync(dir,{recursive:true});
-  const target=path.join(dir,remoteID);
   const stat=await fs.promises.stat(req.file.path);
   const hash=crypto.createHash("sha256");
   await new Promise((resolve,reject)=>{const stream=fs.createReadStream(req.file.path);stream.on("data",chunk=>hash.update(chunk));stream.on("end",resolve);stream.on("error",reject);});
   const sha256=hash.digest("hex");
-  await fs.promises.rename(req.file.path,target);
-  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,stat.size,target,req.teamUser]);
-  await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:stat.size});
-  res.json({remoteID,kind,fileName,sha256,byteCount:stat.size,uploadedAt:new Date().toISOString()});
+  const {rows:dupes}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 AND sha256=$2 LIMIT 1',[id,sha256]);
+  if(dupes[0]){await fs.promises.unlink(req.file.path).catch(()=>{});return res.json({...dupes[0],deduplicated:true});}
+  const remoteID=crypto.randomUUID();
+  const storageKey=id+"/"+remoteID;
+  const storagePath=await storeArtifactFile(req.file.path,storageKey);
+  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,stat.size,storagePath,req.teamUser]);
+  await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:stat.size,storageMode:artifactStorageMode});
+  res.json({remoteID,kind,fileName,sha256,byteCount:stat.size,uploadedAt:new Date().toISOString(),storageMode:artifactStorageMode});
 });
 app.get("/v1/team-projects/:id/artifacts",requireTeamAuth,async(req,res)=>{
   const id=req.params.id.toLowerCase();
@@ -165,10 +208,22 @@ app.get("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req,re
   if(!await canRead(project,req.teamUser))return res.status(403).end();
   const {rows}=await pool.query("SELECT * FROM project_artifacts WHERE project_id=$1 AND remote_id=$2",[id,req.params.remoteID]);
   const a=rows[0];
-  if(!a||!fs.existsSync(a.storage_path))return res.status(404).end();
+  if(!a)return res.status(404).end();
   res.setHeader("X-Artifact-SHA256",a.sha256);
   res.setHeader("Content-Disposition",'attachment; filename="'+encodeURIComponent(a.file_name)+'"');
-  fs.createReadStream(a.storage_path).pipe(res);
+  try{await pipeStoredArtifact(a.storage_path,res);}catch(e){if(e?.code==="ENOENT")return res.status(404).end();throw e;}
+});
+
+app.delete("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req,res)=>{
+  const id=req.params.id.toLowerCase();
+  const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
+  if(!project)return res.status(404).json({error:"Proje bulunamadı."});
+  if(!await canWrite(project,req.teamUser))return res.status(403).json({error:"Yetki yok."});
+  const {rows}=await pool.query("DELETE FROM project_artifacts WHERE project_id=$1 AND remote_id=$2 RETURNING storage_path",[id,req.params.remoteID]);
+  if(!rows[0])return res.status(404).json({error:"Artifact bulunamadı."});
+  await deleteStoredArtifact(rows[0].storage_path);
+  await audit(req,"artifact_delete","project",id,{remoteID:req.params.remoteID});
+  res.json({ok:true});
 });
 
 app.get("/v1/team-projects/:id/versions",requireTeamAuth,async(req,res)=>{const id=req.params.id.toLowerCase();const {rows:projects}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const r=projects[0];if(!r)return res.status(404).json({error:"Proje bulunamadı."});if(!await canRead(r,req.teamUser))return res.status(403).json({error:"Projeyi görme yetkin yok."});const {rows}=await pool.query("SELECT version,saved_by,saved_at FROM project_versions WHERE project_id=$1 ORDER BY version DESC LIMIT 50",[id]);res.json({currentVersion:r.version,versions:rows});});
