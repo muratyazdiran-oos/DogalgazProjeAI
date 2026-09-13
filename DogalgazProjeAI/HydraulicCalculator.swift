@@ -22,6 +22,8 @@ struct HydraulicSummary: Hashable {
     let hasCycle: Bool
     let hasUnknownDiameter: Bool
     let attachedLoadDeviceCount: Int
+    var criticalPathPipeIDs: [UUID] = []
+    var criticalDeviceID: UUID? = nil
 }
 
 enum HydraulicCalculator {
@@ -138,9 +140,22 @@ enum HydraulicCalculator {
             ))
         }
 
-        let attachedLoadNodes = attached.filter { reachableNodes.contains($0.node) }.map(\.node)
+        let attachedReachable = attached.filter { reachableNodes.contains($0.node) }
+        let attachedLoadNodes = attachedReachable.map(\.node)
         let loadDrops = attachedLoadNodes.compactMap { dropAtNode[$0] }
         let criticalDrop = loadDrops.max()
+        let criticalAttachment = attachedReachable.max {
+            (dropAtNode[$0.node] ?? -.infinity) < (dropAtNode[$1.node] ?? -.infinity)
+        }
+        var criticalPathPipeIDs: [UUID] = []
+        if var cursor = criticalAttachment?.node {
+            while cursor != root, let edgeIndex = tree.parentEdge[cursor], let parent = tree.parent[cursor] {
+                let edge = graph.edges[edgeIndex]
+                criticalPathPipeIDs.append(analysis.pipes[edge.pipeIndex].id)
+                cursor = parent
+            }
+            criticalPathPipeIDs.reverse()
+        }
         let minimumOutlet = criticalDrop.map { settings.inletPressureMbar - $0 }
         let complete = unattachedCount == 0 && disconnectedPipeCount == 0 && !unknownDiameter && attached.count == loads.count
 
@@ -160,7 +175,9 @@ enum HydraulicCalculator {
             unattachedDeviceCount: unattachedCount,
             hasCycle: false,
             hasUnknownDiameter: unknownDiameter,
-            attachedLoadDeviceCount: attached.count
+            attachedLoadDeviceCount: attached.count,
+            criticalPathPipeIDs: criticalPathPipeIDs,
+            criticalDeviceID: criticalAttachment?.device.id
         )
     }
 
