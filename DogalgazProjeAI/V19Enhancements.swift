@@ -23,6 +23,7 @@ struct ARDepthSample: Codable, Hashable {
     var gridWidth: Int
     var gridHeight: Int
     var meters: [Float]
+    var confidence: [UInt8]? = nil
 }
 
 struct ARCaptureArtifact: Codable, Hashable {
@@ -255,16 +256,16 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                 imageWidth: CVPixelBufferGetWidth(frame.capturedImage),
                 imageHeight: CVPixelBufferGetHeight(frame.capturedImage)
             ))
-            if hasDepth, relative - lastDepthSampleTime >= 0.5,
+            if hasDepth, relative - lastDepthSampleTime >= 0.25,
                let depth = frame.smoothedSceneDepth ?? frame.sceneDepth,
-               let sample = Self.depthSample(from: depth.depthMap, timeSeconds: relative) {
+               let sample = Self.depthSample(from: depth.depthMap, confidenceMap: depth.confidenceMap, timeSeconds: relative) {
                 depthSamples.append(sample)
                 lastDepthSampleTime = relative
             }
         }
     }
 
-    private static func depthSample(from depthMap: CVPixelBuffer, timeSeconds: Double) -> ARDepthSample? {
+    private static func depthSample(from depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer?, timeSeconds: Double) -> ARDepthSample? {
         guard CVPixelBufferGetPixelFormatType(depthMap) == kCVPixelFormatType_DepthFloat32 else { return nil }
         CVPixelBufferLockBaseAddress(depthMap, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
@@ -275,7 +276,15 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
         let gridWidth = min(32, sourceWidth)
         let gridHeight = min(24, sourceHeight)
         var values: [Float] = []
+        var confidences: [UInt8] = []
         values.reserveCapacity(gridWidth * gridHeight)
+        confidences.reserveCapacity(gridWidth * gridHeight)
+        if let confidenceMap { CVPixelBufferLockBaseAddress(confidenceMap, .readOnly) }
+        defer { if let confidenceMap { CVPixelBufferUnlockBaseAddress(confidenceMap, .readOnly) } }
+        let confidenceBase = confidenceMap.flatMap { CVPixelBufferGetBaseAddress($0) }
+        let confidenceBPR = confidenceMap.map { CVPixelBufferGetBytesPerRow($0) } ?? 0
+        let confidenceWidth = confidenceMap.map { CVPixelBufferGetWidth($0) } ?? 0
+        let confidenceHeight = confidenceMap.map { CVPixelBufferGetHeight($0) } ?? 0
         for gy in 0..<gridHeight {
             let sy = min(sourceHeight - 1, Int((Double(gy) + 0.5) * Double(sourceHeight) / Double(gridHeight)))
             let row = base.advanced(by: sy * bytesPerRow).assumingMemoryBound(to: Float.self)
@@ -283,9 +292,17 @@ final class ARSpatialRecorder: NSObject, ObservableObject, ARSessionDelegate {
                 let sx = min(sourceWidth - 1, Int((Double(gx) + 0.5) * Double(sourceWidth) / Double(gridWidth)))
                 let v = row[sx]
                 values.append(v.isFinite && v > 0 ? v : 0)
+                if let confidenceBase, confidenceWidth > 0, confidenceHeight > 0 {
+                    let cx = min(confidenceWidth - 1, Int((Double(gx) + 0.5) * Double(confidenceWidth) / Double(gridWidth)))
+                    let cy = min(confidenceHeight - 1, Int((Double(gy) + 0.5) * Double(confidenceHeight) / Double(gridHeight)))
+                    let crow = confidenceBase.advanced(by: cy * confidenceBPR).assumingMemoryBound(to: UInt8.self)
+                    confidences.append(crow[cx])
+                } else {
+                    confidences.append(2)
+                }
             }
         }
-        return ARDepthSample(timeSeconds: timeSeconds, sourceWidth: sourceWidth, sourceHeight: sourceHeight, gridWidth: gridWidth, gridHeight: gridHeight, meters: values)
+        return ARDepthSample(timeSeconds: timeSeconds, sourceWidth: sourceWidth, sourceHeight: sourceHeight, gridWidth: gridWidth, gridHeight: gridHeight, meters: values, confidence: confidences)
     }
 
     private static func currentVideoOrientationDegrees() -> Int {
