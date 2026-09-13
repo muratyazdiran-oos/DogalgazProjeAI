@@ -591,16 +591,10 @@ enum PipeDiameterAdvisor {
 
             var candidates = Set(velocityViolations.map(\.pipeID))
             if pressureViolation {
-                // Kritik hat bilgisi segment cumulative drop ile yaklaşık seçilir.
-                if let worst = summary.segmentResults
-                    .filter({ $0.cumulativePressureDropMbar != nil })
-                    .max(by: { ($0.cumulativePressureDropMbar ?? 0) < ($1.cumulativePressureDropMbar ?? 0) }) {
-                    candidates.insert(worst.pipeID)
-                }
-                // Basınç limiti hâlâ aşılmışsa yüksek debili segmentler de adaydır.
-                for r in summary.segmentResults.sorted(by: { $0.flowM3h > $1.flowM3h }).prefix(3) {
-                    candidates.insert(r.pipeID)
-                }
+                for id in summary.criticalPathPipeIDs { candidates.insert(id) }
+                if candidates.isEmpty, let worst = summary.segmentResults.max(by: {
+                    ($0.cumulativePressureDropMbar ?? 0) < ($1.cumulativePressureDropMbar ?? 0)
+                }) { candidates.insert(worst.pipeID) }
             }
 
             var changed = false
