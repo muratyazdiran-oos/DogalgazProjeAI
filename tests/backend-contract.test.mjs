@@ -47,7 +47,7 @@ test('batch sync checks team membership for new projects', () => {
 
 test('artifact routes require team auth and hash artifacts', () => {
   assert.ok(source.includes('/v1/team-projects/:id/artifacts'));
-  assert.ok(source.includes('requireTeamAuth,artifactUpload.single("artifact")'));
+  assert.ok(source.includes('requireTeamAuth,artifactLimiter,artifactUpload.single("artifact")'));
   assert.ok(source.includes('createHash("sha256")'));
   assert.ok(source.includes('X-Artifact-SHA256'));
 });
