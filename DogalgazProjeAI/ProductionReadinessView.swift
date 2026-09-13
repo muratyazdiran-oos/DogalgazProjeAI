@@ -14,7 +14,18 @@ struct ProductionReadinessView: View {
         let ruleVerified = project.ruleProfile?.engineerVerified == true
         let qualityReviewed = project.resolvedAnalysis.map { project.reviewState?.isComplete(for: $0) == true } ?? false
         let approvalReady = project.approvalWorkflow?.status == .engineerReviewed || project.approvalWorkflow?.status == .approved
-        let calibrationReady = project.calibration?.calibratedAt != nil
+        let legacyCalibrationReady = project.calibration?.calibratedAt != nil
+        let arCalibrationReady = project.arRoomAlignment?.calibrationIsAcceptable == true
+        let calibrationReady = arCalibrationReady || legacyCalibrationReady
+        let evidenceReady = project.approvalEvidenceBlockingReasons.isEmpty
+        let cloudRefs = project.cloudArtifacts ?? []
+        let cloudHealthy = cloudRefs.isEmpty || cloudRefs.allSatisfy(\.recentlyVerified)
+        let hydraulic = project.resolvedAnalysis.map { HydraulicCalculator.calculate($0, settings: project.resolvedEngineeringSettings) }
+        let hydraulicReady = hydraulic?.available == true && hydraulic?.hasCycle == false && hydraulic?.disconnectedPipeCount == 0 && hydraulic?.unattachedDeviceCount == 0
+        let pipes = project.resolvedAnalysis?.pipes ?? []
+        let elevatedPipeCount = pipes.filter { $0.startElevationM != nil && $0.endElevationM != nil }.count
+        let elevationCoverage = pipes.isEmpty ? 0 : Double(elevatedPipeCount) / Double(pipes.count)
+        let threeDReady = pipes.isEmpty ? false : elevationCoverage >= 0.95
 
         return [
             .init(title: "Demo modu kapalı", detail: APIConfig.useMockAI ? "Gerçek AI analizi için demo modunu kapat." : "Gerçek backend kullanılacak.", ok: !APIConfig.useMockAI),
@@ -24,7 +35,11 @@ struct ProductionReadinessView: View {
             .init(title: "Mühendislik profili", detail: hasEngineeringProfile ? project.resolvedEngineeringSettings.profileName : "Proje için teknik profil seçilmedi.", ok: hasEngineeringProfile),
             .init(title: "Kural profili doğrulaması", detail: ruleVerified ? "Profil yetkili mühendis tarafından doğrulanmış." : "Kurum/revizyon/kaynak doğrulaması gerekli.", ok: ruleVerified),
             .init(title: "AI öğe kalite kontrolü", detail: qualityReviewed ? "Belirsiz cihaz ve borular incelenmiş." : "AI tespitlerini tek tek gözden geçir.", ok: qualityReviewed),
-            .init(title: "AI / LiDAR kalibrasyonu", detail: calibrationReady ? "Mekânsal hizalama kaydedilmiş." : "Katman hizalamasını saha ölçüsüyle doğrula.", ok: calibrationReady),
+            .init(title: "AR / RoomPlan kalibrasyonu", detail: arCalibrationReady ? String(format: "Çok noktalı hizalama uygun • RMS %.1f cm", (project.arRoomAlignment?.calibrationRMSErrorM ?? 0) * 100) : (calibrationReady ? "Eski kalibrasyon mevcut; çok noktalı AR↔RoomPlan önerilir." : "Çok noktalı saha hizalaması gerekli."), ok: calibrationReady),
+            .init(title: "3B boru kot kapsamı", detail: pipes.isEmpty ? "Boru hattı yok." : "%\(Int((elevationCoverage * 100).rounded())) segmentte başlangıç/bitiş kotu mevcut.", ok: threeDReady),
+            .init(title: "Hidrolik ağ bütünlüğü", detail: hydraulicReady ? String(format: "Kritik Δp: %.3f mbar", hydraulic?.criticalPressureDropMbar ?? 0) : (hydraulic?.message ?? "Hidrolik hesap kullanılamıyor."), ok: hydraulicReady),
+            .init(title: "Saha kanıt bütünlüğü", detail: evidenceReady ? "Yerel/bulut kanıtlar onay için erişilebilir." : project.approvalEvidenceBlockingReasons.prefix(2).joined(separator: " • "), ok: evidenceReady),
+            .init(title: "Bulut artifact sağlığı", detail: cloudHealthy ? (cloudRefs.isEmpty ? "Bulut artifact zorunlu değil / kayıt yok." : "\(cloudRefs.count) artifact son 24 saatte doğrulanmış.") : "Bulut kanıt sağlık kontrolünü çalıştır.", ok: cloudHealthy),
             .init(title: "Mühendis onay akışı", detail: approvalReady ? (project.approvalWorkflow?.status.title ?? "Hazır") : "En az mühendis incelemesi aşamasına getir.", ok: approvalReady),
             .init(title: "Doğrulama hataları", detail: errors == 0 ? "Bloklayıcı hata yok." : "\(errors) bloklayıcı hata var.", ok: errors == 0),
             .init(title: "Doğrulama uyarıları", detail: warnings == 0 ? "Açık uyarı yok." : "\(warnings) uyarı mühendis tarafından incelenmeli.", ok: warnings == 0)
