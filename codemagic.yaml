@@ -42,18 +42,17 @@ workflows:
     environment:
       xcode: latest
       groups:
-        - appstore_credentials
+        - code-signing
       vars:
         XCODE_PROJECT: "DogalgazProjeAI.xcodeproj"
         XCODE_SCHEME: "DogalgazProjeAI"
         BUNDLE_ID: "com.murat.dogalgazprojeai"
+      integrations:
+        app_store_connect: Codemagic
 
     scripts:
-      - name: Verify App Store credentials
+      - name: Verify signing private key
         script: |
-          test -n "$APP_STORE_CONNECT_PRIVATE_KEY" || (echo "APP_STORE_CONNECT_PRIVATE_KEY eksik" && exit 1)
-          test -n "$APP_STORE_CONNECT_KEY_IDENTIFIER" || (echo "APP_STORE_CONNECT_KEY_IDENTIFIER eksik" && exit 1)
-          test -n "$APP_STORE_CONNECT_ISSUER_ID" || (echo "APP_STORE_CONNECT_ISSUER_ID eksik" && exit 1)
           test -n "$CERTIFICATE_PRIVATE_KEY" || (echo "CERTIFICATE_PRIVATE_KEY eksik" && exit 1)
       - name: Initialize keychain
         script: keychain initialize
@@ -80,8 +79,6 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
