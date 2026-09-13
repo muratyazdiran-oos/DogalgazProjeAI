@@ -305,7 +305,7 @@ final class CloudArtifactService: ObservableObject {
         struct Result:Decodable{let ok:Bool;let sha256:String;let byteCount:Int64;let verifiedAt:Date}
         let result=try JSONDecoder.standard.decode(Result.self,from:data)
         var copy=artifact
-        copy.remoteVerified=result.ok && result.sha256.caseInsensitiveCompare(artifact.sha256)==.orderedSame && result.byteCount==artifact.byteCount
+        copy.remoteVerified=result.ok && result.sha256.caseInsensitiveCompare(artifact.sha256)== .orderedSame && result.byteCount==artifact.byteCount
         copy.verifiedAt=result.verifiedAt
         return copy
     }
@@ -376,7 +376,7 @@ struct CloudArtifactSyncView: View {
                         Text("\(a.kind) • \(ByteCountFormatter.string(fromByteCount:a.byteCount,countStyle:.file)) • SHA \(a.sha256.prefix(12))")
                             .font(.caption).foregroundStyle(.secondary)
                         Text(a.recentlyVerified ? "Bulut doğrulandı ✓" : "Bulut doğrulaması gerekli")
-                            .font(.caption2).foregroundStyle(a.recentlyVerified ? .green : .orange)
+                            .font(.caption2).foregroundColor(a.recentlyVerified ? Color.green : Color.orange)
                     }
                 }
             }
