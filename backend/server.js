@@ -216,7 +216,12 @@ app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res
   const remoteID=crypto.randomUUID();const key=id+"/"+remoteID;
   const command=new PutObjectCommand({Bucket:s3Bucket,Key:key,ContentType:"application/octet-stream",Metadata:{sha256,kind,file_name:Buffer.from(fileName).toString("base64url")}});
   const uploadURL=await getSignedUrl(s3Client,command,{expiresIn:900});
-  res.json({remoteID,key,uploadURL,expiresIn:900,kind,fileName,sha256,byteCount});
+  res.json({remoteID,key,uploadURL,expiresIn:900,kind,fileName,sha256,byteCount,headers:{
+    "Content-Type":"application/octet-stream",
+    "x-amz-meta-sha256":sha256,
+    "x-amz-meta-kind":kind,
+    "x-amz-meta-file_name":Buffer.from(fileName).toString("base64url")
+  }});
 });
 app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,res)=>{
   if(!s3Client)return res.status(409).json({error:"Doğrudan object storage yapılandırılmadı."});
