@@ -64,6 +64,23 @@ async function deleteStoredArtifact(storagePath){
   }
   try{await fs.promises.unlink(storagePath);}catch(e){if(e?.code!=="ENOENT")throw e;}
 }
+async function queueArtifactDelete(storagePath,reason){
+  if(!pool)return;
+  await pool.query("INSERT INTO artifact_gc_queue(storage_path,reason) VALUES($1,$2) ON CONFLICT(storage_path) DO UPDATE SET reason=EXCLUDED.reason,next_attempt_at=now()",[storagePath,reason]);
+}
+async function runArtifactGC(){
+  if(!pool)return;
+  const {rows}=await pool.query("SELECT id,storage_path,attempts FROM artifact_gc_queue WHERE next_attempt_at<=now() ORDER BY id LIMIT 20");
+  for(const item of rows){
+    try{
+      await deleteStoredArtifact(item.storage_path);
+      await pool.query("DELETE FROM artifact_gc_queue WHERE id=$1",[item.id]);
+    }catch{
+      const delay=Math.min(3600,Math.pow(2,Math.min(item.attempts+1,10))*30);
+      await pool.query("UPDATE artifact_gc_queue SET attempts=attempts+1,next_attempt_at=now()+($2||' seconds')::interval WHERE id=$1",[item.id,String(delay)]);
+    }
+  }
+}
 
 if (isProduction && teamAuthSecret && !databaseURL) {
   console.error("Production ekip/bulut özelliği için DATABASE_URL (PostgreSQL) zorunludur.");
@@ -106,6 +123,16 @@ const migrations = [
   `},
   { version: 4, sql: `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_project_artifacts_project_sha ON project_artifacts(project_id, sha256);
+  `},
+  { version: 5, sql: `
+    CREATE TABLE IF NOT EXISTS artifact_gc_queue (
+      id BIGSERIAL PRIMARY KEY,
+      storage_path TEXT NOT NULL UNIQUE,
+      reason TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `}
 ];
 async function runMigrations(db) {
@@ -190,7 +217,16 @@ app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single
   const remoteID=crypto.randomUUID();
   const storageKey=id+"/"+remoteID;
   const storagePath=await storeArtifactFile(req.file.path,storageKey);
-  await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,stat.size,storagePath,req.teamUser]);
+  try{
+    await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,stat.size,storagePath,req.teamUser]);
+  }catch(e){
+    if(e.code==="23505"){
+      await queueArtifactDelete(storagePath,"dedup-race");
+      const {rows:existing}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 AND sha256=$2 LIMIT 1',[id,sha256]);
+      if(existing[0])return res.json({...existing[0],deduplicated:true});
+    }
+    throw e;
+  }
   await audit(req,"artifact_upload","project",id,{remoteID,kind,sha256,byteCount:stat.size,storageMode:artifactStorageMode});
   res.json({remoteID,kind,fileName,sha256,byteCount:stat.size,uploadedAt:new Date().toISOString(),storageMode:artifactStorageMode});
 });
@@ -224,7 +260,8 @@ app.delete("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req
   if(!await canWrite(project,req.teamUser))return res.status(403).json({error:"Yetki yok."});
   const {rows}=await pool.query("DELETE FROM project_artifacts WHERE project_id=$1 AND remote_id=$2 RETURNING storage_path",[id,req.params.remoteID]);
   if(!rows[0])return res.status(404).json({error:"Artifact bulunamadı."});
-  await deleteStoredArtifact(rows[0].storage_path);
+  try{await deleteStoredArtifact(rows[0].storage_path);}
+  catch{await queueArtifactDelete(rows[0].storage_path,"delete-failed");}
   await audit(req,"artifact_delete","project",id,{remoteID:req.params.remoteID});
   res.json({ok:true});
 });
@@ -236,6 +273,7 @@ app.use((error,_req,res,_next)=>{if(error instanceof multer.MulterError&&error.c
 app.use((error,req,res,_next)=>{console.error(`[${req.requestId}]`,error);res.status(500).json({error:"Sunucu hatası.",requestId:req.requestId});});
 
 if(pool)await pool.query("DELETE FROM revoked_tokens WHERE expires_at<=now()");
+if(pool){await runArtifactGC();setInterval(()=>runArtifactGC().catch(console.error),5*60*1000).unref();}
 const server=app.listen(Number(process.env.PORT||8080),()=>console.log(`API ${apiVersion} ready • ${model}`));
 function shutdown(signal){console.log(`${signal} received; shutting down.`);server.close(async()=>{if(pool)await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
 process.on("SIGTERM",()=>shutdown("SIGTERM")); process.on("SIGINT",()=>shutdown("SIGINT"));
