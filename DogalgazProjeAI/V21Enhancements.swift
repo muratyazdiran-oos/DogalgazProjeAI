@@ -675,11 +675,33 @@ enum PipeDiameterAdvisor {
             if velocityViolations.isEmpty && !pressureViolation { break }
 
             var candidates = Set(velocityViolations.map(\.pipeID))
+
             if pressureViolation {
-                for id in summary.criticalPathPipeIDs { candidates.insert(id) }
-                if candidates.isEmpty, let worst = summary.segmentResults.max(by: {
-                    ($0.cumulativePressureDropMbar ?? 0) < ($1.cumulativePressureDropMbar ?? 0)
-                }) { candidates.insert(worst.pipeID) }
+                let baselineDrop = summary.criticalPressureDropMbar ?? .infinity
+                var bestPipeID: UUID?
+                var bestBenefit = 0.0
+                let path = summary.criticalPathPipeIDs.isEmpty
+                    ? summary.segmentResults.compactMap { $0.cumulativePressureDropMbar == nil ? nil : $0.pipeID }
+                    : summary.criticalPathPipeIDs
+
+                for id in path {
+                    guard let idx = trial.pipes.firstIndex(where: { $0.id == id }),
+                          let next = nextDiameter(after: trial.pipes[idx].diameterMM) else { continue }
+                    var candidate = trial
+                    candidate.pipes[idx].diameterMM = next
+                    candidate.pipes[idx].internalDiameterMM = PipeDimensionCatalog.bestInternalDiameter(
+                        material: settings.pipeMaterial,
+                        nominalMM: next
+                    )
+                    let evaluated = HydraulicCalculator.calculate(candidate, settings: settings)
+                    guard let newDrop = evaluated.criticalPressureDropMbar, baselineDrop.isFinite else { continue }
+                    let benefit = baselineDrop - newDrop
+                    if benefit > bestBenefit {
+                        bestBenefit = benefit
+                        bestPipeID = id
+                    }
+                }
+                if let bestPipeID { candidates.insert(bestPipeID) }
             }
 
             var changed = false
