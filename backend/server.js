@@ -16,6 +16,7 @@ const apiKey = process.env.GEMINI_API_KEY?.trim();
 if (!apiKey) { console.error("GEMINI_API_KEY eksik."); process.exit(1); }
 const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
 const maxVideoMB = Math.max(25, Math.min(Number(process.env.MAX_VIDEO_MB || 500), 1024));
+const maxArtifactMB = Math.max(25, Math.min(Number(process.env.MAX_ARTIFACT_MB || 1024), 4096));
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map(v=>v.trim()).filter(Boolean);
 const appApiToken = process.env.APP_API_TOKEN?.trim() || "";
 const teamAuthSecret = process.env.TEAM_AUTH_SECRET?.trim() || "";
@@ -181,6 +182,8 @@ const app=express(); app.disable("x-powered-by"); if(process.env.TRUST_PROXY==="
 app.use((req,res,next)=>{const id=req.get("x-request-id")?.slice(0,100)||crypto.randomUUID();res.setHeader("X-Request-ID",id);req.requestId=id;next();});
 app.use(helmet({crossOriginResourcePolicy:false})); app.use(cors({origin:allowedOrigins.length?allowedOrigins:false})); app.use(rateLimit({windowMs:60000,limit:60,standardHeaders:"draft-8",legacyHeaders:false})); app.use(express.json({limit:"2mb"}));
 const authLimiter=rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false,message:{error:"Çok fazla giriş denemesi. Daha sonra tekrar deneyin."}});
+const artifactLimiter=rateLimit({windowMs:60*1000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,message:{error:"Çok fazla artifact isteği."}});
+const allowedArtifactKinds=new Set(["artifact","ar-video","ar-trajectory","ar-depth","field-evidence"]);
 function requireAppToken(req,res,next){if(!appApiToken)return next();if((req.get("authorization")||"")!==`Bearer ${appApiToken}`)return res.status(401).json({error:"Yetkisiz istek."});next();}
 
 const upload=multer({dest:uploadDir,limits:{fileSize:maxVideoMB*1024*1024,files:1,fields:2,fieldSize:4096,parts:3},fileFilter:(_,f,cb)=>{const ok=["video/mp4","video/quicktime","video/x-m4v"].includes(f.mimetype);cb(ok?null:new Error("Desteklenmeyen video biçimi."),ok);}});
@@ -234,7 +237,7 @@ app.put("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const envelope=
 app.post("/v1/team-projects/sync-batch",requireTeamAuth,async(req,res)=>{const items=Array.isArray(req.body?.items)?req.body.items:[];if(items.length<1||items.length>30)return res.status(400).json({error:"1-30 proje gerekli."});const results=[];for(const item of items){const project=item?.project,id=String(project?.id||"").toLowerCase(),expectedVersion=Number.isInteger(item?.expectedVersion)?item.expectedVersion:null;if(!id){results.push({ok:false,error:"project id missing"});continue;}const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const existing=rows[0];if(existing&&!await canWrite(existing,req.teamUser)){results.push({id,ok:false,status:403});continue;}if(existing&&(expectedVersion===null||expectedVersion!==existing.version)){results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}if(existing){const next=existing.version+1;const client=await pool.connect();try{await client.query("BEGIN");await client.query("INSERT INTO project_versions(project_id,version,project,saved_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,existing.version,existing.project,req.teamUser]);const update=await client.query("UPDATE projects SET project=$1,version=$2,updated_at=now() WHERE id=$3 AND version=$4 RETURNING version",[project,next,id,existing.version]);if(!update.rowCount){await client.query("ROLLBACK");results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}await client.query("COMMIT");results.push({id,ok:true,version:next});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}else{const teamID=project?.collaboration?.teamID||null;if(teamID&&!await teamRole(teamID,req.teamUser)){results.push({id,ok:false,status:403,error:"team membership required"});continue;}await pool.query("INSERT INTO projects(id,owner_email,team_id,version,project) VALUES($1,$2,$3,1,$4)",[id,req.teamUser,teamID,project]);results.push({id,ok:true,version:1});}}await audit(req,"sync_batch","project",null,{count:items.length});res.json({results});});
 app.get("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[req.params.id.toLowerCase()]);const r=rows[0];if(!r)return res.status(404).json({error:"Proje bulunamadı."});if(!await canRead(r,req.teamUser))return res.status(403).json({error:"Projeyi görme yetkin yok."});res.json({project:r.project,version:r.version});});
 
-app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res)=>{
+app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,artifactLimiter,async(req,res)=>{
   if(!s3Client)return res.status(409).json({error:"Doğrudan object storage yapılandırılmadı."});
   const id=req.params.id.toLowerCase();
   const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=rows[0];
@@ -242,6 +245,7 @@ app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res
   const sha256=String(req.body?.sha256||"").toLowerCase();
   const byteCount=Number(req.body?.byteCount||0);
   const kind=String(req.body?.kind||"artifact").slice(0,40);
+  if(!allowedArtifactKinds.has(kind))return res.status(400).json({error:"Artifact türü geçersiz."});
   const fileName=path.basename(String(req.body?.fileName||"artifact.bin")).slice(0,180);
   if(!/^[a-f0-9]{64}$/.test(sha256)||!Number.isFinite(byteCount)||byteCount<=0)return res.status(400).json({error:"Geçerli SHA-256 ve boyut gerekli."});
   if(byteCount>maxArtifactMB*1024*1024)return res.status(413).json({error:`Artifact en fazla ${maxArtifactMB} MB olabilir.`});
@@ -258,7 +262,7 @@ app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res
     "x-amz-meta-file_name":Buffer.from(fileName).toString("base64url")
   }});
 });
-app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,res)=>{
+app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,artifactLimiter,async(req,res)=>{
   if(!s3Client)return res.status(409).json({error:"Doğrudan object storage yapılandırılmadı."});
   const id=req.params.id.toLowerCase();const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
   if(!project||!await canWrite(project,req.teamUser))return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});
@@ -282,13 +286,14 @@ app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,re
   res.json({remoteID,kind,fileName,sha256,byteCount,uploadedAt:new Date().toISOString(),storageMode:"s3"});
 });
 
-app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single("artifact"),async(req,res)=>{
+app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactLimiter,artifactUpload.single("artifact"),async(req,res)=>{
   const id=req.params.id.toLowerCase();
   if(!req.file)return res.status(400).json({error:"Artifact dosyası gerekli."});
   const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);
   const project=rows[0];
   if(!project||!await canWrite(project,req.teamUser)){fs.unlink(req.file.path,()=>{});return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});}
   const kind=String(req.body?.kind||"artifact").slice(0,40);
+  if(!allowedArtifactKinds.has(kind)){await fs.promises.unlink(req.file.path).catch(()=>{});return res.status(400).json({error:"Artifact türü geçersiz."});}
   const fileName=path.basename(String(req.body?.fileName||req.file.originalname||"artifact.bin")).slice(0,180);
   const stat=await fs.promises.stat(req.file.path);
   const hash=crypto.createHash("sha256");
