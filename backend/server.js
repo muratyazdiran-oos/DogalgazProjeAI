@@ -71,6 +71,8 @@ async function queueArtifactDelete(storagePath,reason){
 }
 async function runArtifactGC(){
   if(!pool)return;
+  const {rows:expired}=await pool.query("DELETE FROM artifact_upload_sessions WHERE expires_at<=now() RETURNING storage_path");
+  for(const item of expired){await queueArtifactDelete(item.storage_path,"expired-presigned-upload");}
   const {rows}=await pool.query("SELECT id,storage_path,attempts FROM artifact_gc_queue WHERE next_attempt_at<=now() ORDER BY id LIMIT 20");
   for(const item of rows){
     try{
@@ -134,6 +136,20 @@ const migrations = [
       next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+  `},
+  { version: 6, sql: `
+    CREATE TABLE IF NOT EXISTS artifact_upload_sessions (
+      remote_id UUID PRIMARY KEY,
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      storage_path TEXT NOT NULL UNIQUE,
+      sha256 TEXT NOT NULL,
+      byte_count BIGINT NOT NULL,
+      kind TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      created_by TEXT,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_artifact_upload_sessions_exp ON artifact_upload_sessions(expires_at);
   `}
 ];
 async function runMigrations(db) {
@@ -215,6 +231,7 @@ app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res
   if(dupes[0])return res.json({deduplicated:true,artifact:dupes[0]});
   const remoteID=crypto.randomUUID();const key=id+"/"+remoteID;
   const command=new PutObjectCommand({Bucket:s3Bucket,Key:key,ContentType:"application/octet-stream",Metadata:{sha256,kind,file_name:Buffer.from(fileName).toString("base64url")}});
+  await pool.query("INSERT INTO artifact_upload_sessions(remote_id,project_id,storage_path,sha256,byte_count,kind,file_name,created_by,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '15 minutes')",[remoteID,id,"s3:"+key,sha256,byteCount,kind,fileName,req.teamUser]);
   const uploadURL=await getSignedUrl(s3Client,command,{expiresIn:900});
   res.json({remoteID,key,uploadURL,expiresIn:900,kind,fileName,sha256,byteCount,headers:{
     "Content-Type":"application/octet-stream",
@@ -228,6 +245,10 @@ app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,re
   const id=req.params.id.toLowerCase();const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
   if(!project||!await canWrite(project,req.teamUser))return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});
   const remoteID=String(req.body?.remoteID||""),sha256=String(req.body?.sha256||"").toLowerCase(),kind=String(req.body?.kind||"artifact").slice(0,40),fileName=path.basename(String(req.body?.fileName||"artifact.bin")).slice(0,180),byteCount=Number(req.body?.byteCount||0);
+  const {rows:sessions}=await pool.query("SELECT * FROM artifact_upload_sessions WHERE remote_id=$1 AND project_id=$2 AND expires_at>now()",[remoteID,id]);
+  const session=sessions[0];
+  if(!session||session.created_by!==req.teamUser)return res.status(409).json({error:"Upload oturumu yok veya süresi dolmuş."});
+  if(session.sha256!==sha256||Number(session.byte_count)!==byteCount||session.kind!==kind||session.file_name!==fileName)return res.status(409).json({error:"Upload oturumu metadata uyuşmuyor."});
   const key=id+"/"+remoteID;
   const head=await s3Client.send(new HeadObjectCommand({Bucket:s3Bucket,Key:key}));
   const objectSHA=String(head.Metadata?.sha256||"").toLowerCase();
@@ -238,6 +259,7 @@ app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,re
     if(e.code==="23505"){await queueArtifactDelete("s3:"+key,"presign-dedup-race");const {rows:existing}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 AND sha256=$2 LIMIT 1',[id,sha256]);if(existing[0])return res.json({...existing[0],deduplicated:true});}
     throw e;
   }
+  await pool.query("DELETE FROM artifact_upload_sessions WHERE remote_id=$1",[remoteID]);
   await audit(req,"artifact_upload_direct","project",id,{remoteID,kind,sha256,byteCount});
   res.json({remoteID,kind,fileName,sha256,byteCount,uploadedAt:new Date().toISOString(),storageMode:"s3"});
 });
