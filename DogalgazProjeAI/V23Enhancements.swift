@@ -403,6 +403,13 @@ struct Route3DPlannerView: View {
                     }
                 }
                 if let result {
+                    Section("3B Önizleme") {
+                        GasProject3DView(project: previewProject(for: result))
+                            .frame(height: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        Text("Sarı hat hesaplanan taslak güzergâhtır. Uygulamadan önce döndürüp yakınlaştırarak kontrol edebilirsin.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Section("Sonuç") {
                         LabeledContent("Uzunluk",value:String(format:"%.2f m",result.lengthMeters))
                         LabeledContent("Düşey hareket",value:String(format:"%.2f m",result.verticalChangeMeters))
@@ -450,6 +457,35 @@ struct Route3DPlannerView: View {
                 ContentUnavailableView("RoomPlan ve proje analizi gerekli",systemImage:"cube.transparent")
             }
         }.navigationTitle("3B Akıllı Güzergâh")
+    }
+
+    private func previewProject(for result: Route3DResult) -> GasProject {
+        guard var analysis = project.analysis, let scan = project.roomScan else { return project }
+        let mapper = MetricProjectMapper(scan: scan)
+        for pair in zip(result.points, result.points.dropFirst()) {
+            analysis.pipes.append(PipeSegment(
+                id: UUID(),
+                start: mapper.normalized(x: pair.0.x, y: pair.0.z),
+                end: mapper.normalized(x: pair.1.x, y: pair.1.z),
+                diameterMM: 22,
+                internalDiameterMM: nil,
+                lengthMeters: sqrt(
+                    pow(pair.1.x-pair.0.x,2) +
+                    pow(pair.1.z-pair.0.z,2) +
+                    pow(pair.1.elevationM-pair.0.elevationM,2)
+                ),
+                minorLossK: nil,
+                elevationDeltaM: pair.1.elevationM-pair.0.elevationM,
+                aiConfidence: nil,
+                requiresReview: true,
+                floorID: project.activeFloorID,
+                startElevationM: pair.0.elevationM,
+                endElevationM: pair.1.elevationM
+            ))
+        }
+        var copy = project
+        copy.analysis = analysis
+        return copy
     }
 }
 
