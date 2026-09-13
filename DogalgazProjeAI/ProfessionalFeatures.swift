@@ -287,6 +287,7 @@ extension GasProject {
         if approvalWorkflow?.engineerRegistration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { reasons.append("sicil / oda no eksik") }
         if approvalWorkflow?.engineerSignaturePNGBase64 == nil { reasons.append("mühendis imzası eksik") }
         if approvalWorkflow?.stampImagePNGBase64 == nil && approvalWorkflow?.stampText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { reasons.append("kaşe bilgisi eksik") }
+        reasons.append(contentsOf: approvalEvidenceBlockingReasons)
         return reasons
     }
 }
