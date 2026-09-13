@@ -462,8 +462,8 @@ extension GasProject {
                     reasons.append("saha kanıtı SHA-256 doğrulaması başarısız: \(record.kind.title)")
                 }
             } else if let expected = record.evidenceSHA256 {
-                if !cloud.contains(where: { $0.sha256.caseInsensitiveCompare(expected) == .orderedSame }) {
-                    reasons.append("saha kanıtı yerelde veya bulutta bulunamadı: \(record.kind.title)")
+                if !cloud.contains(where: { $0.sha256.caseInsensitiveCompare(expected) == .orderedSame && $0.recentlyVerified }) {
+                    reasons.append("saha kanıtı yerelde yok; bulut kopyası son 24 saatte doğrulanmadı: \(record.kind.title)")
                 }
             } else {
                 reasons.append("saha kanıtı dosyası bulunamadı: \(record.kind.title)")
@@ -475,8 +475,8 @@ extension GasProject {
             for name in names {
                 let local = dir.appendingPathComponent(name)
                 if !FileManager.default.fileExists(atPath: local.path) &&
-                    !cloud.contains(where: { $0.fileName == name }) {
-                    reasons.append("AR kanıtı yerelde veya bulutta bulunamadı: \(name)")
+                    !cloud.contains(where: { $0.fileName == name && $0.recentlyVerified }) {
+                    reasons.append("AR kanıtı yerelde yok; bulut kopyası son 24 saatte doğrulanmadı: \(name)")
                 }
             }
         }
