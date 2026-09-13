@@ -305,7 +305,9 @@ final class CloudArtifactService: ObservableObject {
         struct Result:Decodable{let ok:Bool;let sha256:String;let byteCount:Int64;let verifiedAt:Date}
         let result=try JSONDecoder.standard.decode(Result.self,from:data)
         var copy=artifact
-        copy.remoteVerified=result.ok && result.sha256.caseInsensitiveCompare(artifact.sha256)== .orderedSame && result.byteCount==artifact.byteCount
+        let hashMatches = result.sha256.caseInsensitiveCompare(artifact.sha256) == ComparisonResult.orderedSame
+        let sizeMatches = result.byteCount == artifact.byteCount
+        copy.remoteVerified = result.ok && hashMatches && sizeMatches
         copy.verifiedAt=result.verifiedAt
         return copy
     }
