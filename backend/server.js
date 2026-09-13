@@ -205,11 +205,28 @@ app.get("/v1/teams/:id/dashboard",requireTeamAuth,async(req,res)=>{
   const {rows:teams}=await pool.query("SELECT name FROM teams WHERE id=$1",[teamID]);
   if(!teams[0])return res.status(404).json({error:"Takım bulunamadı."});
   const {rows:members}=await pool.query("SELECT tm.email,tm.role,u.name FROM team_members tm JOIN users u ON u.email=tm.email WHERE tm.team_id=$1 ORDER BY tm.role,tm.email",[teamID]);
-  const {rows:projects}=await pool.query("SELECT id,version,owner_email,updated_at,COALESCE(project->>'name','Proje') AS name,COALESCE(project->'projectWorkflow'->>'status','draft') AS status,project->'projectWorkflow'->>'assignedToEmail' AS assigned_to_email,project->'projectWorkflow'->>'dueDate' AS due_date FROM projects WHERE team_id=$1 ORDER BY updated_at DESC LIMIT 100",[teamID]);
+  const {rows:projects}=await pool.query(`
+    SELECT p.id,p.version,p.owner_email,p.updated_at,
+      COALESCE(p.project->>'name','Proje') AS name,
+      COALESCE(p.project->'projectWorkflow'->>'status','draft') AS status,
+      p.project->'projectWorkflow'->>'assignedToEmail' AS assigned_to_email,
+      p.project->'projectWorkflow'->>'dueDate' AS due_date,
+      COALESCE(p.project->'approvalWorkflow'->>'status','draft') AS approval_status,
+      CASE
+        WHEN COALESCE(p.project->'projectWorkflow'->>'status','draft') <> 'completed'
+         AND NULLIF(p.project->'projectWorkflow'->>'dueDate','') IS NOT NULL
+         AND NULLIF(p.project->'projectWorkflow'->>'dueDate','')::timestamptz < now()
+        THEN true ELSE false END AS overdue,
+      (SELECT count(*)::int FROM project_artifacts a WHERE a.project_id=p.id) AS artifact_count,
+      CASE WHEN p.project->'arRoomAlignment' IS NOT NULL THEN true ELSE false END AS has_ar_alignment
+    FROM projects p WHERE p.team_id=$1 ORDER BY p.updated_at DESC LIMIT 100
+  `,[teamID]);
   const countsByRole={}; for(const m of members) countsByRole[m.role]=(countsByRole[m.role]||0)+1;
   const countsByStatus={}; for(const p of projects) countsByStatus[p.status]=(countsByStatus[p.status]||0)+1;
   await audit(req,"dashboard_view","team",teamID,{memberCount:members.length,projectCount:projects.length});
-  res.json({teamName:teams[0].name,members,projects:projects.map(p=>({id:p.id,name:p.name,version:p.version,updatedAt:p.updated_at,ownerEmail:p.owner_email,status:p.status,assignedToEmail:p.assigned_to_email,dueDate:p.due_date})),countsByRole,countsByStatus});
+  const overdueCount=projects.filter(p=>p.overdue).length;
+  const approvalQueueCount=projects.filter(p=>p.approval_status!=="approved" && ["engineeringReview","fieldVisit"].includes(p.status)).length;
+  res.json({teamName:teams[0].name,members,projects:projects.map(p=>({id:p.id,name:p.name,version:p.version,updatedAt:p.updated_at,ownerEmail:p.owner_email,status:p.status,assignedToEmail:p.assigned_to_email,dueDate:p.due_date,approvalStatus:p.approval_status,overdue:p.overdue,artifactCount:p.artifact_count,hasARAlignment:p.has_ar_alignment})),countsByRole,countsByStatus,overdueCount,approvalQueueCount});
 });
 
 
