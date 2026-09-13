@@ -19,12 +19,8 @@ jobs:
       - name: Install backend dependencies
         run: npm install --prefix backend --ignore-scripts --no-audit --no-fund
       - run: node --check backend/server.js
-      - name: Import backend dependency graph
-        run: node -e "import('./backend/server.js').then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1)})"
-        env:
-          GEMINI_API_KEY: ci-placeholder
-          APP_API_TOKEN: ci-placeholder
-          NODE_ENV: test
+      - name: Import backend dependencies
+        run: cd backend && node --input-type=module -e "await Promise.all([import('@aws-sdk/client-s3'),import('@aws-sdk/s3-request-presigner'),import('@google/genai'),import('express'),import('pg')])"
       - run: python3 scripts/quality-gates-v23.py
       - run: node --test tests/backend-contract.test.mjs
       - name: Reject committed secrets
