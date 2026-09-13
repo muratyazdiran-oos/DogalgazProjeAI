@@ -91,4 +91,5 @@ struct MeasuredOpening: Identifiable, Codable, Hashable {
     var widthMeters: Double
     var heightMeters: Double
     var yawRadians: Double
+    var bottomMeters: Double? = nil
 }
