@@ -149,6 +149,12 @@ struct CloudArtifactReference: Identifiable, Codable, Hashable {
     var sha256: String
     var byteCount: Int64
     var uploadedAt: Date
+    var remoteVerified: Bool? = nil
+    var verifiedAt: Date? = nil
+
+    var recentlyVerified: Bool {
+        remoteVerified == true && verifiedAt.map { Date().timeIntervalSince($0) < 24 * 3600 } == true
+    }
 }
 
 
@@ -280,6 +286,38 @@ final class CloudArtifactService: ObservableObject {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    func list(projectID: UUID) async throws -> [CloudArtifactReference] {
+        guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts", relativeTo: baseURL) else { throw ArtifactError.badURL }
+        var req=URLRequest(url:url)
+        if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField:"Authorization") }
+        let (data,response)=try await URLSession.shared.data(for:req)
+        guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else { throw ArtifactError.server }
+        struct Payload:Decodable{let artifacts:[CloudArtifactReference]}
+        return try JSONDecoder.standard.decode(Payload.self,from:data).artifacts
+    }
+
+    func verify(_ artifact: CloudArtifactReference, projectID: UUID) async throws -> CloudArtifactReference {
+        guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/\(artifact.remoteID)/verify", relativeTo: baseURL) else { throw ArtifactError.badURL }
+        var req=URLRequest(url:url)
+        if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField:"Authorization") }
+        let (data,response)=try await URLSession.shared.data(for:req)
+        guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else { throw ArtifactError.server }
+        struct Result:Decodable{let ok:Bool;let sha256:String;let byteCount:Int64;let verifiedAt:Date}
+        let result=try JSONDecoder.standard.decode(Result.self,from:data)
+        var copy=artifact
+        copy.remoteVerified=result.ok && result.sha256.caseInsensitiveCompare(artifact.sha256)==.orderedSame && result.byteCount==artifact.byteCount
+        copy.verifiedAt=result.verifiedAt
+        return copy
+    }
+
+    func delete(_ artifact: CloudArtifactReference, projectID: UUID) async throws {
+        guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/\(artifact.remoteID)", relativeTo: baseURL) else { throw ArtifactError.badURL }
+        var req=URLRequest(url:url);req.httpMethod="DELETE"
+        if let token, !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField:"Authorization") }
+        let (_,response)=try await URLSession.shared.data(for:req)
+        guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else { throw ArtifactError.server }
+    }
+
     func download(_ artifact: CloudArtifactReference, projectID: UUID, destination: URL) async throws {
         guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/\(artifact.remoteID)", relativeTo: baseURL) else { throw ArtifactError.badURL }
         var req=URLRequest(url:url)
@@ -325,6 +363,8 @@ struct CloudArtifactSyncView: View {
         List {
             Section {
                 Button("Yerel Kanıtları Buluta Gönder") { Task { await uploadAll() } }.disabled(busy)
+                Button("Bulut Listesini Yenile") { Task { await refreshCloudList() } }.disabled(busy)
+                Button("Kanıt Sağlık Kontrolü") { Task { await verifyAll() } }.disabled(busy || (project.cloudArtifacts ?? []).isEmpty)
                 Button("Buluttaki Kanıtları Bu Cihaza İndir") { Task { await downloadAll() } }.disabled(busy || (project.cloudArtifacts ?? []).isEmpty)
                 Text("AR video/depth/trajectory ve checklist fotoğrafları SHA-256 ile doğrulanır. S3/R2 varsa büyük dosyalar doğrudan object storage'a yüklenir; aksi halde backend upload kullanılır.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -335,10 +375,19 @@ struct CloudArtifactSyncView: View {
                         Text(a.fileName)
                         Text("\(a.kind) • \(ByteCountFormatter.string(fromByteCount:a.byteCount,countStyle:.file)) • SHA \(a.sha256.prefix(12))")
                             .font(.caption).foregroundStyle(.secondary)
+                        Text(a.recentlyVerified ? "Bulut doğrulandı ✓" : "Bulut doğrulaması gerekli")
+                            .font(.caption2).foregroundStyle(a.recentlyVerified ? .green : .orange)
                     }
                 }
             }
             if !message.isEmpty { Section("Durum"){Text(message)} }
+            if let refs=project.cloudArtifacts, !refs.isEmpty {
+                Section("Buluttan Sil") {
+                    ForEach(refs) { a in
+                        Button(a.fileName, role:.destructive) { Task { await deleteCloud(a) } }
+                    }
+                }
+            }
         }.navigationTitle("Kanıt Bulut Senkronu")
     }
 
@@ -372,6 +421,40 @@ struct CloudArtifactSyncView: View {
             onSave(project)
             message="\(uploaded) kanıt dosyası buluta gönderildi."
         } catch { message=error.localizedDescription }
+    }
+
+    private func refreshCloudList() async {
+        busy=true;defer{busy=false}
+        do {
+            let remote=try await service.list(projectID:project.id)
+            let existing=Dictionary(uniqueKeysWithValues:(project.cloudArtifacts ?? []).map{($0.remoteID,$0)})
+            project.cloudArtifacts=remote.map { item in
+                var x=item
+                if let old=existing[item.remoteID] { x.remoteVerified=old.remoteVerified;x.verifiedAt=old.verifiedAt }
+                return x
+            }
+            onSave(project);message="Bulut artifact listesi yenilendi."
+        }catch{message=error.localizedDescription}
+    }
+
+    private func verifyAll() async {
+        busy=true;defer{busy=false}
+        do {
+            var refs:[CloudArtifactReference]=[]
+            for a in project.cloudArtifacts ?? [] { refs.append(try await service.verify(a,projectID:project.id)) }
+            project.cloudArtifacts=refs;onSave(project)
+            let good=refs.filter(\.recentlyVerified).count
+            message="\(good)/\(refs.count) artifact uzakta doğrulandı."
+        }catch{message=error.localizedDescription}
+    }
+
+    private func deleteCloud(_ artifact:CloudArtifactReference) async {
+        busy=true;defer{busy=false}
+        do {
+            try await service.delete(artifact,projectID:project.id)
+            project.cloudArtifacts?.removeAll{$0.remoteID==artifact.remoteID}
+            onSave(project);message="Bulut artifact silindi."
+        }catch{message=error.localizedDescription}
     }
 
     private func downloadAll() async {
