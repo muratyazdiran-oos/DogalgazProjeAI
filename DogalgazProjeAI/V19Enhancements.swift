@@ -532,12 +532,14 @@ struct Project3DViewer: View {
 
 struct TeamDashboardPayload: Decodable {
     struct Member: Decodable, Identifiable { var id: String { email }; let email: String; let role: String; let name: String? }
-    struct ProjectItem: Decodable, Identifiable { let id: String; let name: String; let version: Int; let updatedAt: String?; let ownerEmail: String; let status: String?; let assignedToEmail: String?; let dueDate: String? }
+    struct ProjectItem: Decodable, Identifiable { let id: String; let name: String; let version: Int; let updatedAt: String?; let ownerEmail: String; let status: String?; let assignedToEmail: String?; let dueDate: String?; let approvalStatus: String?; let overdue: Bool?; let artifactCount: Int?; let hasARAlignment: Bool? }
     let teamName: String
     let members: [Member]
     let projects: [ProjectItem]
     let countsByRole: [String:Int]
     let countsByStatus: [String:Int]?
+    let overdueCount: Int?
+    let approvalQueueCount: Int?
 }
 
 @MainActor final class TeamDashboardService: ObservableObject {
@@ -562,6 +564,7 @@ struct TeamDashboardPayload: Decodable {
 struct EnterpriseDashboardView: View {
     let project: GasProject
     @StateObject private var service = TeamDashboardService()
+    @State private var filter = "all"
     var body: some View {
         List {
             if let teamID = project.collaboration?.teamID {
@@ -570,11 +573,30 @@ struct EnterpriseDashboardView: View {
                     Section("\(d.teamName) • Özet") {
                         LabeledContent("Üye", value: "\(d.members.count)")
                         LabeledContent("Proje", value: "\(d.projects.count)")
+                        LabeledContent("Geciken", value: "\(d.overdueCount ?? 0)")
+                        LabeledContent("Onay kuyruğu", value: "\(d.approvalQueueCount ?? 0)")
                         ForEach(d.countsByRole.keys.sorted(), id: \.self) { role in LabeledContent(role, value: "\(d.countsByRole[role] ?? 0)") }
                         ForEach((d.countsByStatus ?? [:]).keys.sorted(), id: \.self) { status in LabeledContent("Durum • \(status)", value: "\(d.countsByStatus?[status] ?? 0)") }
                     }
                     Section("Üyeler") { ForEach(d.members) { member in HStack { VStack(alignment: .leading) { Text(member.name ?? member.email); Text(member.email).font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(member.role).font(.caption) } } }
-                    Section("Projeler") { ForEach(d.projects) { item in VStack(alignment: .leading) { Text(item.name); Text("v\(item.version) • \(item.status ?? "draft") • \(item.assignedToEmail ?? item.ownerEmail)").font(.caption).foregroundStyle(.secondary); if let due = item.dueDate { Text("Teslim: \(due)").font(.caption2).foregroundStyle(.secondary) } } } }
+                    Section("Proje Filtresi") {
+                        Picker("Göster", selection: $filter) {
+                            Text("Tümü").tag("all")
+                            Text("Geciken").tag("overdue")
+                            Text("Onay").tag("approval")
+                            Text("Kanıtsız").tag("evidence")
+                        }.pickerStyle(.segmented)
+                    }
+                    Section("Projeler") {
+                        ForEach(filteredProjects(d.projects)) { item in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack { Text(item.name); if item.overdue == true { Spacer(); Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) } }
+                                Text("v\(item.version) • \(item.status ?? "draft") • \(item.assignedToEmail ?? item.ownerEmail)").font(.caption).foregroundStyle(.secondary)
+                                Text("Onay: \(item.approvalStatus ?? "draft") • Kanıt: \(item.artifactCount ?? 0) • AR hizalama: \(item.hasARAlignment == true ? "var" : "yok")").font(.caption2).foregroundStyle(.secondary)
+                                if let due = item.dueDate { Text("Teslim: \(due)").font(.caption2).foregroundStyle(.secondary) }
+                            }
+                        }
+                    }
                 }
                 if let error = service.error { Text(error).foregroundStyle(.red) }
                 Button("Yenile") { Task { await service.load(teamID: teamID) } }
@@ -583,5 +605,14 @@ struct EnterpriseDashboardView: View {
                 ContentUnavailableView("Takım bağlı değil", systemImage: "person.3", description: Text("Önce Ekip / Bulut ekranından bir takım oluştur veya projeyi takıma bağla."))
             }
         }.navigationTitle("Firma Yönetim Paneli")
+    }
+
+    private func filteredProjects(_ items: [TeamDashboardPayload.ProjectItem]) -> [TeamDashboardPayload.ProjectItem] {
+        switch filter {
+        case "overdue": return items.filter { $0.overdue == true }
+        case "approval": return items.filter { $0.approvalStatus != "approved" && ["engineeringReview","fieldVisit"].contains($0.status ?? "") }
+        case "evidence": return items.filter { ($0.artifactCount ?? 0) == 0 }
+        default: return items
+        }
     }
 }
