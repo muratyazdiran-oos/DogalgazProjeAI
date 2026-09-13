@@ -169,10 +169,11 @@ final class CloudArtifactService: ObservableObject {
     }
 
     func upload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
-        if let direct = try? await directUpload(fileURL: fileURL, kind: kind, projectID: projectID) {
-            return direct
+        do {
+            return try await directUpload(fileURL: fileURL, kind: kind, projectID: projectID)
+        } catch ArtifactError.directUnavailable {
+            return try await multipartUpload(fileURL: fileURL, kind: kind, projectID: projectID)
         }
-        return try await multipartUpload(fileURL: fileURL, kind: kind, projectID: projectID)
     }
 
     private func directUpload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
