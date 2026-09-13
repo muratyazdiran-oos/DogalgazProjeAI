@@ -23,12 +23,23 @@ workflows:
         script: xcodebuild -version
       - name: Verify project and scheme
         script: |
-          xcodebuild             -project "$CM_BUILD_DIR/$XCODE_PROJECT"             -scheme "$XCODE_SCHEME"             -showBuildSettings > /tmp/build-settings.txt
+          xcodebuild \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -showBuildSettings > /tmp/build-settings.txt
           grep -E "PRODUCT_BUNDLE_IDENTIFIER|MARKETING_VERSION|CURRENT_PROJECT_VERSION" /tmp/build-settings.txt
       - name: Build iOS app without code signing
         script: |
           set -o pipefail
-          xcodebuild             -project "$CM_BUILD_DIR/$XCODE_PROJECT"             -scheme "$XCODE_SCHEME"             -configuration Debug             -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             CODE_SIGNING_ALLOWED=NO             clean build             | tee /tmp/xcodebuild.log
+          xcodebuild \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build \
+            | tee /tmp/xcodebuild.log
 
     artifacts:
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/Products/Debug-iphonesimulator/*.app
@@ -44,25 +55,16 @@ workflows:
 
     environment:
       xcode: latest
-      groups:
-        - code-signing
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.murat.dogalgazprojeai
       vars:
         XCODE_PROJECT: "DogalgazProjeAI.xcodeproj"
         XCODE_SCHEME: "DogalgazProjeAI"
         BUNDLE_ID: "com.murat.dogalgazprojeai"
 
     scripts:
-      - name: Verify signing private key
-        script: |
-          test -n "$CERTIFICATE_PRIVATE_KEY" || (echo "CERTIFICATE_PRIVATE_KEY eksik" && exit 1)
-      - name: Initialize keychain
-        script: keychain initialize
-      - name: Fetch App Store signing files
-        script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID"             --type IOS_APP_STORE             --create
-      - name: Add signing certificate
-        script: keychain add-certificates
-      - name: Apply provisioning profiles
+      - name: Apply Codemagic signing profiles
         script: xcode-project use-profiles
       - name: Set unique build number
         script: |
@@ -70,7 +72,9 @@ workflows:
           agvtool new-version -all "$CM_BUILD_NUMBER"
       - name: Build signed IPA
         script: |
-          xcode-project build-ipa             --project "$CM_BUILD_DIR/$XCODE_PROJECT"             --scheme "$XCODE_SCHEME"
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
 
     artifacts:
       - build/ios/ipa/*.ipa
