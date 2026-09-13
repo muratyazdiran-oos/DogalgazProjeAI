@@ -334,6 +334,33 @@ app.get("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req,re
   try{await pipeStoredArtifact(a.storage_path,res);}catch(e){if(e?.code==="ENOENT")return res.status(404).end();throw e;}
 });
 
+app.get("/v1/team-projects/:id/artifacts/:remoteID/verify",requireTeamAuth,async(req,res)=>{
+  const id=req.params.id.toLowerCase();
+  const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
+  if(!project)return res.status(404).json({error:"Proje bulunamadı."});
+  if(!await canRead(project,req.teamUser))return res.status(403).json({error:"Yetki yok."});
+  const {rows}=await pool.query("SELECT * FROM project_artifacts WHERE project_id=$1 AND remote_id=$2",[id,req.params.remoteID]);const a=rows[0];
+  if(!a)return res.status(404).json({error:"Artifact bulunamadı."});
+  try{
+    let ok=false,actualSize=0,actualSHA=a.sha256;
+    if(a.storage_path.startsWith("s3:")){
+      if(!s3Client)return res.status(503).json({error:"S3 yapılandırılmadı."});
+      const head=await s3Client.send(new HeadObjectCommand({Bucket:s3Bucket,Key:a.storage_path.slice(3)}));
+      actualSize=Number(head.ContentLength||0);
+      actualSHA=String(head.Metadata?.sha256||"").toLowerCase();
+      ok=actualSize===Number(a.byte_count)&&actualSHA===a.sha256.toLowerCase();
+    }else{
+      const stat=await fs.promises.stat(a.storage_path);
+      actualSize=stat.size;
+      const hash=crypto.createHash("sha256");
+      await new Promise((resolve,reject)=>{const stream=fs.createReadStream(a.storage_path);stream.on("data",chunk=>hash.update(chunk));stream.on("end",resolve);stream.on("error",reject);});
+      actualSHA=hash.digest("hex");
+      ok=actualSize===Number(a.byte_count)&&actualSHA===a.sha256.toLowerCase();
+    }
+    res.json({ok,sha256:actualSHA,byteCount:actualSize,verifiedAt:new Date().toISOString()});
+  }catch(e){if(e?.code==="ENOENT"||e?.name==="NotFound")return res.status(404).json({ok:false,error:"Artifact storage dosyası yok."});throw e;}
+});
+
 app.delete("/v1/team-projects/:id/artifacts/:remoteID",requireTeamAuth,async(req,res)=>{
   const id=req.params.id.toLowerCase();
   const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
