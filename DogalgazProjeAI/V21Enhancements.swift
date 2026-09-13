@@ -169,6 +169,71 @@ final class CloudArtifactService: ObservableObject {
     }
 
     func upload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
+        if let direct = try? await directUpload(fileURL: fileURL, kind: kind, projectID: projectID) {
+            return direct
+        }
+        return try await multipartUpload(fileURL: fileURL, kind: kind, projectID: projectID)
+    }
+
+    private func directUpload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
+        guard let baseURL,
+              let presignURL = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/presign", relativeTo: baseURL),
+              let finalizeURL = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/finalize", relativeTo: baseURL) else { throw ArtifactError.badURL }
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let byteCount = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        guard byteCount > 0 else { throw ArtifactError.server }
+        let sha256 = try Self.streamingSHA256(fileURL)
+
+        struct PresignArtifact: Decodable {
+            let remoteID: String; let kind: String; let fileName: String; let sha256: String; let byteCount: Int64; let uploadedAt: Date
+        }
+        struct PresignResponse: Decodable {
+            let deduplicated: Bool?
+            let artifact: PresignArtifact?
+            let remoteID: String?
+            let uploadURL: String?
+            let kind: String?
+            let fileName: String?
+            let sha256: String?
+            let byteCount: Int64?
+        }
+
+        var preReq = URLRequest(url: presignURL)
+        preReq.httpMethod = "POST"
+        preReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token, !token.isEmpty { preReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        preReq.httpBody = try JSONSerialization.data(withJSONObject: [
+            "kind": kind, "fileName": fileURL.lastPathComponent, "sha256": sha256, "byteCount": byteCount
+        ])
+        let (preData, preResponse) = try await URLSession.shared.data(for: preReq)
+        guard let preHTTP = preResponse as? HTTPURLResponse, (200..<300).contains(preHTTP.statusCode) else { throw ArtifactError.directUnavailable }
+        let presign = try JSONDecoder.standard.decode(PresignResponse.self, from: preData)
+        if let a = presign.artifact {
+            return .init(remoteID: a.remoteID, kind: a.kind, fileName: a.fileName, sha256: a.sha256, byteCount: a.byteCount, uploadedAt: a.uploadedAt)
+        }
+        guard let remoteID = presign.remoteID, let upload = presign.uploadURL, let objectURL = URL(string: upload) else { throw ArtifactError.directUnavailable }
+
+        var put = URLRequest(url: objectURL)
+        put.httpMethod = "PUT"
+        put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (_, putResponse) = try await URLSession.shared.upload(for: put, fromFile: fileURL)
+        guard let putHTTP = putResponse as? HTTPURLResponse, (200..<300).contains(putHTTP.statusCode) else { throw ArtifactError.server }
+
+        var fin = URLRequest(url: finalizeURL)
+        fin.httpMethod = "POST"
+        fin.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token, !token.isEmpty { fin.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        fin.httpBody = try JSONSerialization.data(withJSONObject: [
+            "remoteID": remoteID, "kind": kind, "fileName": fileURL.lastPathComponent, "sha256": sha256, "byteCount": byteCount
+        ])
+        let (finData, finResponse) = try await URLSession.shared.data(for: fin)
+        guard let finHTTP = finResponse as? HTTPURLResponse, (200..<300).contains(finHTTP.statusCode) else { throw ArtifactError.server }
+        let ack = try JSONDecoder.standard.decode(UploadAck.self, from: finData)
+        return .init(remoteID: ack.remoteID, kind: ack.kind, fileName: ack.fileName, sha256: ack.sha256, byteCount: ack.byteCount, uploadedAt: ack.uploadedAt)
+    }
+
+    private func multipartUpload(fileURL: URL, kind: String, projectID: UUID) async throws -> CloudArtifactReference {
         guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts", relativeTo: baseURL) else {
             throw ArtifactError.badURL
         }
@@ -200,6 +265,17 @@ final class CloudArtifactService: ObservableObject {
         return .init(remoteID: ack.remoteID, kind: ack.kind, fileName: ack.fileName, sha256: ack.sha256, byteCount: ack.byteCount, uploadedAt: ack.uploadedAt)
     }
 
+    private static func streamingSHA256(_ url: URL) throws -> String {
+        let input = try FileHandle(forReadingFrom: url)
+        defer { try? input.close() }
+        var hasher = SHA256()
+        while true {
+            guard let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     func download(_ artifact: CloudArtifactReference, projectID: UUID, destination: URL) async throws {
         guard let baseURL, let url = URL(string: "/v1/team-projects/\(projectID.uuidString.lowercased())/artifacts/\(artifact.remoteID)", relativeTo: baseURL) else { throw ArtifactError.badURL }
         var req=URLRequest(url:url)
@@ -222,12 +298,13 @@ final class CloudArtifactService: ObservableObject {
     }
 
     enum ArtifactError: LocalizedError {
-        case badURL, server, hashMismatch
+        case badURL, server, hashMismatch, directUnavailable
         var errorDescription:String? {
             switch self {
             case .badURL:return "Backend adresi geçersiz."
             case .server:return "Artifact sunucu işlemi başarısız."
             case .hashMismatch:return "İndirilen dosyanın SHA-256 değeri eşleşmiyor."
+            case .directUnavailable:return "Doğrudan object storage yükleme kullanılamıyor."
             }
         }
     }
@@ -245,7 +322,7 @@ struct CloudArtifactSyncView: View {
             Section {
                 Button("Yerel Kanıtları Buluta Gönder") { Task { await uploadAll() } }.disabled(busy)
                 Button("Buluttaki Kanıtları Bu Cihaza İndir") { Task { await downloadAll() } }.disabled(busy || (project.cloudArtifacts ?? []).isEmpty)
-                Text("AR video/depth/trajectory ve checklist fotoğrafları SHA-256 ile doğrulanır. Sunucuda ARTIFACT_STORAGE_DIR kalıcı volume olmalıdır.")
+                Text("AR video/depth/trajectory ve checklist fotoğrafları SHA-256 ile doğrulanır. S3/R2 varsa büyük dosyalar doğrudan object storage'a yüklenir; aksi halde backend upload kullanılır.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Bulut Artifactleri") {
