@@ -8,7 +8,8 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pg from "pg";
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -20,7 +21,7 @@ const appApiToken = process.env.APP_API_TOKEN?.trim() || "";
 const teamAuthSecret = process.env.TEAM_AUTH_SECRET?.trim() || "";
 const databaseURL = process.env.DATABASE_URL?.trim() || "";
 const isProduction = process.env.NODE_ENV === "production";
-const apiVersion = "2.3.0";
+const apiVersion = "2.4.0";
 const uploadDir = path.join(os.tmpdir(), "gas-ai"); fs.mkdirSync(uploadDir,{recursive:true});
 const artifactStorageDir = process.env.ARTIFACT_STORAGE_DIR?.trim() || path.join(process.cwd(),"data","artifacts"); fs.mkdirSync(artifactStorageDir,{recursive:true});
 const s3Bucket = process.env.S3_ARTIFACT_BUCKET?.trim() || "";
@@ -199,6 +200,42 @@ app.get("/v1/teams/:id/dashboard",requireTeamAuth,async(req,res)=>{
 app.put("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const envelope=req.body||{},project=envelope.project,expectedVersion=Number.isInteger(envelope.expectedVersion)?envelope.expectedVersion:null;if(!project||String(project.id||"").toLowerCase()!==req.params.id.toLowerCase())return res.status(400).json({error:"Proje kimliği uyuşmuyor."});const id=req.params.id.toLowerCase(),teamID=project?.collaboration?.teamID||null;const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const existing=rows[0];if(existing&&!await canWrite(existing,req.teamUser))return res.status(403).json({error:"Projeyi düzenleme yetkin yok."});if(teamID&&!await teamRole(teamID,req.teamUser))return res.status(403).json({error:"Takım üyeliği gerekli."});if(existing){if(expectedVersion===null||expectedVersion!==existing.version)return res.status(409).json({error:"Buluttaki proje daha yeni.",currentVersion:existing.version});const next=existing.version+1;const client=await pool.connect();try{await client.query("BEGIN");await client.query("INSERT INTO project_versions(project_id,version,project,saved_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,existing.version,existing.project,req.teamUser]);const update=await client.query("UPDATE projects SET project=$1,team_id=$2,version=$3,updated_at=now() WHERE id=$4 AND version=$5 RETURNING version",[project,teamID,next,id,existing.version]);if(!update.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Senkronizasyon çakışması."});}await client.query("COMMIT");await audit(req,"update","project",id,{version:next});return res.json({ok:true,version:next});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}await pool.query("INSERT INTO projects(id,owner_email,team_id,version,project) VALUES($1,$2,$3,1,$4)",[id,req.teamUser,teamID,project]);await audit(req,"create","project",id,{version:1});res.json({ok:true,version:1});});
 app.post("/v1/team-projects/sync-batch",requireTeamAuth,async(req,res)=>{const items=Array.isArray(req.body?.items)?req.body.items:[];if(items.length<1||items.length>30)return res.status(400).json({error:"1-30 proje gerekli."});const results=[];for(const item of items){const project=item?.project,id=String(project?.id||"").toLowerCase(),expectedVersion=Number.isInteger(item?.expectedVersion)?item.expectedVersion:null;if(!id){results.push({ok:false,error:"project id missing"});continue;}const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const existing=rows[0];if(existing&&!await canWrite(existing,req.teamUser)){results.push({id,ok:false,status:403});continue;}if(existing&&(expectedVersion===null||expectedVersion!==existing.version)){results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}if(existing){const next=existing.version+1;const client=await pool.connect();try{await client.query("BEGIN");await client.query("INSERT INTO project_versions(project_id,version,project,saved_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,existing.version,existing.project,req.teamUser]);const update=await client.query("UPDATE projects SET project=$1,version=$2,updated_at=now() WHERE id=$3 AND version=$4 RETURNING version",[project,next,id,existing.version]);if(!update.rowCount){await client.query("ROLLBACK");results.push({id,ok:false,status:409,currentVersion:existing.version});continue;}await client.query("COMMIT");results.push({id,ok:true,version:next});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}else{const teamID=project?.collaboration?.teamID||null;if(teamID&&!await teamRole(teamID,req.teamUser)){results.push({id,ok:false,status:403,error:"team membership required"});continue;}await pool.query("INSERT INTO projects(id,owner_email,team_id,version,project) VALUES($1,$2,$3,1,$4)",[id,req.teamUser,teamID,project]);results.push({id,ok:true,version:1});}}await audit(req,"sync_batch","project",null,{count:items.length});res.json({results});});
 app.get("/v1/team-projects/:id",requireTeamAuth,async(req,res)=>{const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[req.params.id.toLowerCase()]);const r=rows[0];if(!r)return res.status(404).json({error:"Proje bulunamadı."});if(!await canRead(r,req.teamUser))return res.status(403).json({error:"Projeyi görme yetkin yok."});res.json({project:r.project,version:r.version});});
+
+app.post("/v1/team-projects/:id/artifacts/presign",requireTeamAuth,async(req,res)=>{
+  if(!s3Client)return res.status(409).json({error:"Doğrudan object storage yapılandırılmadı."});
+  const id=req.params.id.toLowerCase();
+  const {rows}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=rows[0];
+  if(!project||!await canWrite(project,req.teamUser))return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});
+  const sha256=String(req.body?.sha256||"").toLowerCase();
+  const byteCount=Number(req.body?.byteCount||0);
+  const kind=String(req.body?.kind||"artifact").slice(0,40);
+  const fileName=path.basename(String(req.body?.fileName||"artifact.bin")).slice(0,180);
+  if(!/^[a-f0-9]{64}$/.test(sha256)||!Number.isFinite(byteCount)||byteCount<=0)return res.status(400).json({error:"Geçerli SHA-256 ve boyut gerekli."});
+  const {rows:dupes}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 AND sha256=$2 LIMIT 1',[id,sha256]);
+  if(dupes[0])return res.json({deduplicated:true,artifact:dupes[0]});
+  const remoteID=crypto.randomUUID();const key=id+"/"+remoteID;
+  const command=new PutObjectCommand({Bucket:s3Bucket,Key:key,ContentType:"application/octet-stream",Metadata:{sha256,kind,file_name:Buffer.from(fileName).toString("base64url")}});
+  const uploadURL=await getSignedUrl(s3Client,command,{expiresIn:900});
+  res.json({remoteID,key,uploadURL,expiresIn:900,kind,fileName,sha256,byteCount});
+});
+app.post("/v1/team-projects/:id/artifacts/finalize",requireTeamAuth,async(req,res)=>{
+  if(!s3Client)return res.status(409).json({error:"Doğrudan object storage yapılandırılmadı."});
+  const id=req.params.id.toLowerCase();const {rows:p}=await pool.query("SELECT * FROM projects WHERE id=$1",[id]);const project=p[0];
+  if(!project||!await canWrite(project,req.teamUser))return res.status(project?403:404).json({error:project?"Yetki yok.":"Proje bulunamadı."});
+  const remoteID=String(req.body?.remoteID||""),sha256=String(req.body?.sha256||"").toLowerCase(),kind=String(req.body?.kind||"artifact").slice(0,40),fileName=path.basename(String(req.body?.fileName||"artifact.bin")).slice(0,180),byteCount=Number(req.body?.byteCount||0);
+  const key=id+"/"+remoteID;
+  const head=await s3Client.send(new HeadObjectCommand({Bucket:s3Bucket,Key:key}));
+  const objectSHA=String(head.Metadata?.sha256||"").toLowerCase();
+  if(objectSHA!==sha256||Number(head.ContentLength||0)!==byteCount){await deleteStoredArtifact("s3:"+key);return res.status(409).json({error:"Yüklenen artifact SHA/boyut doğrulaması başarısız."});}
+  try{
+    await pool.query("INSERT INTO project_artifacts(remote_id,project_id,kind,file_name,sha256,byte_count,storage_path,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[remoteID,id,kind,fileName,sha256,byteCount,"s3:"+key,req.teamUser]);
+  }catch(e){
+    if(e.code==="23505"){await queueArtifactDelete("s3:"+key,"presign-dedup-race");const {rows:existing}=await pool.query('SELECT remote_id AS "remoteID",kind,file_name AS "fileName",sha256,byte_count AS "byteCount",created_at AS "uploadedAt" FROM project_artifacts WHERE project_id=$1 AND sha256=$2 LIMIT 1',[id,sha256]);if(existing[0])return res.json({...existing[0],deduplicated:true});}
+    throw e;
+  }
+  await audit(req,"artifact_upload_direct","project",id,{remoteID,kind,sha256,byteCount});
+  res.json({remoteID,kind,fileName,sha256,byteCount,uploadedAt:new Date().toISOString(),storageMode:"s3"});
+});
 
 app.post("/v1/team-projects/:id/artifacts",requireTeamAuth,artifactUpload.single("artifact"),async(req,res)=>{
   const id=req.params.id.toLowerCase();
