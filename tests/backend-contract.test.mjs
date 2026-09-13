@@ -90,3 +90,23 @@ test('artifact garbage collection retries failed deletes', () => {
   assert.ok(source.includes('expired-presigned-upload'));
   assert.ok(source.includes('delete-failed'));
 });
+
+
+test('artifact verify endpoint checks storage integrity', () => {
+  assert.ok(source.includes('/artifacts/:remoteID/verify'));
+  assert.ok(source.includes('HeadObjectCommand'));
+  assert.ok(source.includes('actualSHA'));
+});
+
+test('enterprise dashboard exposes operational health metrics', () => {
+  assert.ok(source.includes('overdueCount'));
+  assert.ok(source.includes('approvalQueueCount'));
+  assert.ok(source.includes('artifact_count'));
+  assert.ok(source.includes('has_ar_alignment'));
+});
+
+test('presigned upload sessions expire and are garbage collected', () => {
+  assert.ok(source.includes('artifact_upload_sessions'));
+  assert.ok(source.includes('expires_at<=now()'));
+  assert.ok(source.includes('expired-presigned-upload'));
+});
