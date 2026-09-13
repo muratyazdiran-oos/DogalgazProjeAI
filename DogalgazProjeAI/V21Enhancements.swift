@@ -448,29 +448,32 @@ enum ARWorldProjection {
         let trajectoryData = try Data(contentsOf: dir.appendingPathComponent(artifact.trajectoryFileName))
         let depths = try JSONDecoder.standard.decode([ARDepthSample].self, from: depthData)
         let poses = try JSONDecoder.standard.decode([ARCameraPoseSample].self, from: trajectoryData)
-        guard let depth = depths.min(by: { abs($0.timeSeconds-timeSeconds) < abs($1.timeSeconds-timeSeconds) }),
-              let pose = poses.min(by: { abs($0.timeSeconds-timeSeconds) < abs($1.timeSeconds-timeSeconds) }),
-              abs(depth.timeSeconds-timeSeconds) <= 0.75,
+        guard let pose = poses.min(by: { abs($0.timeSeconds-timeSeconds) < abs($1.timeSeconds-timeSeconds) }),
               abs(pose.timeSeconds-timeSeconds) <= 0.25,
               pose.transform.count >= 16, pose.intrinsics.count >= 9 else { throw ProjectionError.missingSample }
+        let nearbyDepths = depths.filter { abs($0.timeSeconds-timeSeconds) <= 0.35 }
+        guard !nearbyDepths.isEmpty else { throw ProjectionError.missingSample }
 
         let centerPoint = unrotate(box.center, degrees: artifact.videoOrientationDegrees ?? 0)
         let p1 = unrotate(.init(x: box.x + box.width*0.2, y: box.y + box.height*0.2), degrees: artifact.videoOrientationDegrees ?? 0)
         let p2 = unrotate(.init(x: box.x + box.width*0.8, y: box.y + box.height*0.8), degrees: artifact.videoOrientationDegrees ?? 0)
         let minX = max(0, min(p1.x,p2.x)), maxX = min(1, max(p1.x,p2.x))
         let minY = max(0, min(p1.y,p2.y)), maxY = min(1, max(p1.y,p2.y))
-        let gx0 = max(0, min(depth.gridWidth-1, Int(floor(minX * Double(depth.gridWidth)))))
-        let gx1 = max(0, min(depth.gridWidth-1, Int(floor(maxX * Double(depth.gridWidth)))))
-        let gy0 = max(0, min(depth.gridHeight-1, Int(floor(minY * Double(depth.gridHeight)))))
-        let gy1 = max(0, min(depth.gridHeight-1, Int(floor(maxY * Double(depth.gridHeight)))))
         var validDepths:[Float] = []
-        if gx0 <= gx1 && gy0 <= gy1 {
-            for gy in gy0...gy1 {
-                for gx in gx0...gx1 {
-                    let idx = gy * depth.gridWidth + gx
-                    guard depth.meters.indices.contains(idx) else { continue }
-                    let v=depth.meters[idx]
-                    if v.isFinite && v > 0.1 && v < 20 { validDepths.append(v) }
+        for depth in nearbyDepths {
+            let gx0 = max(0, min(depth.gridWidth-1, Int(floor(minX * Double(depth.gridWidth)))))
+            let gx1 = max(0, min(depth.gridWidth-1, Int(floor(maxX * Double(depth.gridWidth)))))
+            let gy0 = max(0, min(depth.gridHeight-1, Int(floor(minY * Double(depth.gridHeight)))))
+            let gy1 = max(0, min(depth.gridHeight-1, Int(floor(maxY * Double(depth.gridHeight)))))
+            if gx0 <= gx1 && gy0 <= gy1 {
+                for gy in gy0...gy1 {
+                    for gx in gx0...gx1 {
+                        let idx = gy * depth.gridWidth + gx
+                        guard depth.meters.indices.contains(idx) else { continue }
+                        let confidence = depth.confidence?.indices.contains(idx) == true ? (depth.confidence?[idx] ?? 0) : 2
+                        let v=depth.meters[idx]
+                        if confidence >= 1 && v.isFinite && v > 0.1 && v < 20 { validDepths.append(v) }
+                    }
                 }
             }
         }
