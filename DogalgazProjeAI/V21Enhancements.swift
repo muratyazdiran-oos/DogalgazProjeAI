@@ -197,6 +197,7 @@ final class CloudArtifactService: ObservableObject {
             let fileName: String?
             let sha256: String?
             let byteCount: Int64?
+            let headers: [String:String]?
         }
 
         var preReq = URLRequest(url: presignURL)
@@ -216,7 +217,9 @@ final class CloudArtifactService: ObservableObject {
 
         var put = URLRequest(url: objectURL)
         put.httpMethod = "PUT"
-        put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        for (key,value) in presign.headers ?? ["Content-Type":"application/octet-stream"] {
+            put.setValue(value, forHTTPHeaderField: key)
+        }
         let (_, putResponse) = try await URLSession.shared.upload(for: put, fromFile: fileURL)
         guard let putHTTP = putResponse as? HTTPURLResponse, (200..<300).contains(putHTTP.statusCode) else { throw ArtifactError.server }
 
