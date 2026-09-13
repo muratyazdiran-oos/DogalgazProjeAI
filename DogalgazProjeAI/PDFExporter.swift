@@ -240,6 +240,26 @@ enum PDFExporter {
         } else {
             right.append("• AR kaydı yok")
         }
+        right.append("")
+        right.append("V2.4 TEKNİK SAĞLIK")
+        if let alignment = project.arRoomAlignment {
+            let h = alignment.calibrationRMSErrorM.map { String(format: "%.1f cm", $0 * 100) } ?? "—"
+            let v = alignment.calibrationVerticalRMSErrorM.map { String(format: "%.1f cm", $0 * 100) } ?? "—"
+            right.append("• AR↔Plan RMS Yatay/Dikey: \(h) / \(v)")
+        } else {
+            right.append("• AR↔Plan kalibrasyonu yok")
+        }
+        let hydraulic = HydraulicCalculator.calculate(analysis, settings: project.resolvedEngineeringSettings)
+        if hydraulic.available {
+            right.append(String(format: "• Kritik Δp: %.3f mbar", hydraulic.criticalPressureDropMbar ?? 0))
+            right.append("• Kritik yol: \(hydraulic.criticalPathPipeIDs.count) segment")
+        } else {
+            right.append("• Hidrolik: kullanılamıyor")
+        }
+        let manifestCount = project.evidenceManifestForApproval.count
+        let verifiedCloud = (project.cloudArtifacts ?? []).filter(\.recentlyVerified).count
+        right.append("• Kanıt manifesti: \(manifestCount) SHA")
+        right.append("• Bulut doğrulandı: \(verifiedCloud)/\((project.cloudArtifacts ?? []).count)")
         right += ["", "SAHA KANITLARI"]
         for record in (project.fieldChecklist?.records ?? []).filter({ $0.evidenceFileName != nil }).prefix(10) {
             right.append("• \(record.kind.title) • SHA \(record.evidenceSHA256.map { String($0.prefix(12)) } ?? "—")")
