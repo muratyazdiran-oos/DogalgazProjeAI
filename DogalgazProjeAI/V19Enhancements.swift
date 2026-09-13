@@ -451,22 +451,9 @@ struct GasProject3DView: UIViewRepresentable {
         }
 
         for wall in scan.walls {
-            let center = SCNVector3(Float(wall.centerX), Float(wall.heightMeters / 2), Float(wall.centerZ))
-            let box = SCNBox(width: CGFloat(wall.lengthMeters), height: CGFloat(wall.heightMeters), length: 0.04, chamferRadius: 0)
-            box.firstMaterial?.diffuse.contents = UIColor.systemGray.withAlphaComponent(0.18)
-            let node = SCNNode(geometry: box)
-            node.position = center
-            node.eulerAngles.y = Float(-wall.yawRadians)
-            scene.rootNode.addChildNode(node)
-        }
-
-        for opening in scan.openings {
-            let box = SCNBox(width: CGFloat(opening.widthMeters), height: CGFloat(opening.heightMeters), length: 0.06, chamferRadius: 0.01)
-            box.firstMaterial?.diffuse.contents = UIColor.systemCyan.withAlphaComponent(0.30)
-            let node = SCNNode(geometry: box)
-            node.position = SCNVector3(Float(opening.centerX), Float(opening.heightMeters / 2), Float(opening.centerZ))
-            node.eulerAngles.y = Float(-opening.yawRadians)
-            scene.rootNode.addChildNode(node)
+            for node in wallPanelNodes(wall: wall, openings: scan.openings) {
+                scene.rootNode.addChildNode(node)
+            }
         }
 
         for floorItem in project.floors ?? [] {
@@ -488,6 +475,107 @@ struct GasProject3DView: UIViewRepresentable {
         cameraNode.eulerAngles.x = -0.55
         scene.rootNode.addChildNode(cameraNode)
         return scene
+    }
+
+    private func wallPanelNodes(wall: MeasuredWall, openings: [MeasuredOpening]) -> [SCNNode] {
+        struct Hole {
+            let x0: Double
+            let x1: Double
+            let y0: Double
+            let y1: Double
+        }
+
+        let dx = cos(wall.yawRadians)
+        let dz = sin(wall.yawRadians)
+        let nx = -dz
+        let nz = dx
+        let half = wall.lengthMeters / 2
+
+        func angleDifference(_ a: Double, _ b: Double) -> Double {
+            var d = abs(a - b).truncatingRemainder(dividingBy: .pi)
+            if d > .pi / 2 { d = .pi - d }
+            return abs(d)
+        }
+
+        let holes: [Hole] = openings.compactMap { opening in
+            let rx = opening.centerX - wall.centerX
+            let rz = opening.centerZ - wall.centerZ
+            let perpendicular = abs(rx * nx + rz * nz)
+            guard perpendicular <= 0.22, angleDifference(opening.yawRadians, wall.yawRadians) <= 0.30 else { return nil }
+            let localX = rx * dx + rz * dz
+            var x0 = localX - opening.widthMeters / 2
+            var x1 = localX + opening.widthMeters / 2
+            guard x1 > -half, x0 < half else { return nil }
+            x0 = max(-half, x0)
+            x1 = min(half, x1)
+
+            let fallbackBottom: Double
+            switch opening.kind {
+            case .door, .opening: fallbackBottom = 0
+            case .window: fallbackBottom = max(0, (wall.heightMeters - opening.heightMeters) / 2)
+            }
+            let y0 = max(0, opening.bottomMeters ?? fallbackBottom)
+            let y1 = min(wall.heightMeters, y0 + opening.heightMeters)
+            guard x1 - x0 > 0.02, y1 - y0 > 0.02 else { return nil }
+            return Hole(x0: x0, x1: x1, y0: y0, y1: y1)
+        }
+
+        if holes.isEmpty {
+            return [wallPanelNode(wall: wall, localX: 0, width: wall.lengthMeters, y0: 0, y1: wall.heightMeters)]
+        }
+
+        var breaks = [-half, half]
+        for hole in holes { breaks += [hole.x0, hole.x1] }
+        breaks = Array(Set(breaks)).sorted()
+        var nodes: [SCNNode] = []
+
+        for i in 0..<(breaks.count - 1) {
+            let x0 = breaks[i], x1 = breaks[i + 1]
+            guard x1 - x0 > 0.01 else { continue }
+            let midX = (x0 + x1) / 2
+            var blocked = holes
+                .filter { midX > $0.x0 + 1e-6 && midX < $0.x1 - 1e-6 }
+                .map { (max(0, $0.y0), min(wall.heightMeters, $0.y1)) }
+                .filter { $0.1 > $0.0 }
+                .sorted { $0.0 < $1.0 }
+
+            var merged: [(Double, Double)] = []
+            for interval in blocked {
+                if let last = merged.last, interval.0 <= last.1 + 1e-6 {
+                    merged[merged.count - 1] = (last.0, max(last.1, interval.1))
+                } else {
+                    merged.append(interval)
+                }
+            }
+
+            var cursor = 0.0
+            for block in merged {
+                if block.0 - cursor > 0.02 {
+                    nodes.append(wallPanelNode(wall: wall, localX: midX, width: x1 - x0, y0: cursor, y1: block.0))
+                }
+                cursor = max(cursor, block.1)
+            }
+            if wall.heightMeters - cursor > 0.02 {
+                nodes.append(wallPanelNode(wall: wall, localX: midX, width: x1 - x0, y0: cursor, y1: wall.heightMeters))
+            }
+        }
+        return nodes
+    }
+
+    private func wallPanelNode(wall: MeasuredWall, localX: Double, width: Double, y0: Double, y1: Double) -> SCNNode {
+        let dx = cos(wall.yawRadians)
+        let dz = sin(wall.yawRadians)
+        let height = max(0.01, y1 - y0)
+        let box = SCNBox(width: CGFloat(max(0.01, width)), height: CGFloat(height), length: 0.04, chamferRadius: 0)
+        box.firstMaterial?.diffuse.contents = UIColor.systemGray.withAlphaComponent(0.22)
+        let node = SCNNode(geometry: box)
+        node.position = SCNVector3(
+            Float(wall.centerX + dx * localX),
+            Float((y0 + y1) / 2),
+            Float(wall.centerZ + dz * localX)
+        )
+        node.eulerAngles.y = Float(-wall.yawRadians)
+        return node
     }
 
     private func floorHeight(for floorID: UUID?) -> Double {
