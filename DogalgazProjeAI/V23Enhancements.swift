@@ -60,6 +60,46 @@ extension ARRoomAlignment {
 
     var calibrationRMSErrorM: Double? { leastSquaresSolution?.rms }
 
+    var calibrationVerticalRMSErrorM: Double? {
+        let points = effectiveControlPoints
+        guard points.count >= 2, let solution = leastSquaresSolution else { return nil }
+        let mse = points.reduce(0.0) { partial, p in
+            let predicted = p.ar.y + solution.verticalOffset
+            return partial + pow(predicted - p.room.y, 2)
+        } / Double(points.count)
+        return sqrt(mse)
+    }
+
+    var minimumControlPointSeparationM: Double {
+        let points = effectiveControlPoints
+        guard points.count >= 2 else { return 0 }
+        var best = Double.infinity
+        for i in 0..<(points.count-1) {
+            for j in (i+1)..<points.count {
+                best = min(best, hypot(points[i].room.x-points[j].room.x, points[i].room.z-points[j].room.z))
+            }
+        }
+        return best.isFinite ? best : 0
+    }
+
+    var controlPointSpreadAreaM2: Double {
+        let points = effectiveControlPoints
+        guard points.count >= 3 else { return 0 }
+        let cx = points.map(\.room.x).reduce(0,+) / Double(points.count)
+        let cz = points.map(\.room.z).reduce(0,+) / Double(points.count)
+        let xx = points.reduce(0.0) { $0 + pow($1.room.x-cx,2) }
+        let zz = points.reduce(0.0) { $0 + pow($1.room.z-cz,2) }
+        let xz = points.reduce(0.0) { $0 + ($1.room.x-cx)*($1.room.z-cz) }
+        return max(0, (xx*zz - xz*xz) / pow(Double(points.count),2))
+    }
+
+    var calibrationIsAcceptable: Bool {
+        guard effectiveControlPoints.count >= 3,
+              let h = calibrationRMSErrorM,
+              let v = calibrationVerticalRMSErrorM else { return false }
+        return h <= 0.10 && v <= 0.10 && minimumControlPointSeparationM >= 0.25 && controlPointSpreadAreaM2 >= 0.01
+    }
+
     func leastSquaresRoomPoint(from ar: WorldPoint3D) -> WorldPoint3D {
         guard let solution = leastSquaresSolution else { return roomPoint(from: ar) }
         let c = cos(solution.rotation), s = sin(solution.rotation)
@@ -106,8 +146,11 @@ struct MultiPointARRoomAlignmentView: View {
             }
             Section("Kalibrasyon Kalitesi") {
                 if let alignment = previewAlignment(), let rms = alignment.calibrationRMSErrorM {
-                    LabeledContent("RMS hata", value: String(format: "%.1f cm", rms * 100))
-                    LabeledContent("Kalite", value: quality(rms))
+                    LabeledContent("Yatay RMS", value: String(format: "%.1f cm", rms * 100))
+                    LabeledContent("Dikey RMS", value: String(format: "%.1f cm", (alignment.calibrationVerticalRMSErrorM ?? .infinity) * 100))
+                    LabeledContent("En yakın referans", value: String(format: "%.2f m", alignment.minimumControlPointSeparationM))
+                    LabeledContent("Nokta yayılımı", value: String(format: "%.3f m²", alignment.controlPointSpreadAreaM2))
+                    LabeledContent("Kalite", value: alignment.calibrationIsAcceptable ? quality(rms) : "Yetersiz")
                     if let s = alignment.leastSquaresSolution {
                         LabeledContent("Ölçek", value: String(format: "%.5f", s.scale))
                         LabeledContent("Dönme", value: String(format: "%.2f°", s.rotation * 180 / .pi))
@@ -122,7 +165,7 @@ struct MultiPointARRoomAlignmentView: View {
                     guard let alignment = previewAlignment(), points.count >= 3 else { return }
                     project.arRoomAlignment = alignment
                     onSave(project)
-                }.disabled(points.count < 3 || previewAlignment()?.leastSquaresSolution == nil)
+                }.disabled(points.count < 3 || previewAlignment()?.calibrationIsAcceptable != true)
             }
         }
         .navigationTitle("Çok Noktalı AR ↔ Plan")
@@ -202,9 +245,39 @@ enum ObstacleAwareRouter3D {
         func h(_ a: Cell, _ b: Cell) -> Double {
             Double(abs(a.x-b.x) + abs(a.z-b.z)) + Double(abs(a.y-b.y)) * 1.5
         }
+        let boundary = scan.boundaryMeters
+        func pointInPolygon(_ p: Point2D, _ polygon: [Point2D]) -> Bool {
+            guard polygon.count >= 3 else { return false }
+            var inside = false
+            var j = polygon.count - 1
+            for i in polygon.indices {
+                let pi = polygon[i], pj = polygon[j]
+                let denom = abs(pj.y-pi.y) < 1e-12 ? 1e-12 : (pj.y-pi.y)
+                if ((pi.y > p.y) != (pj.y > p.y)) &&
+                    (p.x < (pj.x-pi.x)*(p.y-pi.y)/denom + pi.x) { inside.toggle() }
+                j = i
+            }
+            return inside
+        }
         func inside(_ p: RoutePoint3D) -> Bool {
-            p.x >= scan.minX && p.x <= scan.maxX && p.z >= scan.minZ && p.z <= scan.maxZ &&
-            p.elevationM >= 0.1 && p.elevationM <= maxY
+            let horizontal: Bool
+            if boundary.count >= 3 {
+                horizontal = pointInPolygon(.init(x:p.x,y:p.z), boundary)
+            } else {
+                horizontal = p.x >= scan.minX && p.x <= scan.maxX && p.z >= scan.minZ && p.z <= scan.maxZ
+            }
+            return horizontal && p.elevationM >= 0.1 && p.elevationM <= maxY
+        }
+        func distanceToWall(_ p: RoutePoint3D) -> Double {
+            guard !scan.walls.isEmpty else { return 0.25 }
+            func segDistance(_ x:Double,_ z:Double,_ ax:Double,_ az:Double,_ bx:Double,_ bz:Double)->Double {
+                let vx=bx-ax, vz=bz-az, wx=x-ax, wz=z-az
+                let l2=vx*vx+vz*vz
+                if l2 < 1e-10 { return hypot(x-ax,z-az) }
+                let t=max(0,min(1,(wx*vx+wz*vz)/l2))
+                return hypot(x-(ax+t*vx),z-(az+t*vz))
+            }
+            return scan.walls.map { segDistance(p.x,p.z,$0.startX,$0.startZ,$0.endX,$0.endZ) }.min() ?? 0.25
         }
         func blocked(_ c: Cell, startCell: Cell, goalCell: Cell) -> Bool {
             if c == startCell || c == goalCell { return false }
@@ -259,7 +332,12 @@ enum ObstacleAwareRouter3D {
                 guard next.x>=0,next.z>=0,next.y>=0,next.x<cols,next.z<rows,next.y<levels,
                       !closed.contains(next), !blocked(next,startCell:startCell,goalCell:goalCell) else { continue }
                 let verticalMove = m.2 != 0
-                let stepCost = verticalMove ? 2.5 : 1.0
+                let np = point(next)
+                let wallDistance = distanceToWall(np)
+                let wallPenalty = min(2.0, max(0, wallDistance - 0.18) * 2.5)
+                let verticalPenalty = verticalMove ? 3.5 : 0.0
+                let ceilingPenalty = np.elevationM > maxY - 0.15 ? 0.8 : 0.0
+                let stepCost = 1.0 + wallPenalty + verticalPenalty + ceilingPenalty
                 let tentative = (cost[current] ?? .infinity) + stepCost
                 if tentative < (cost[next] ?? .infinity) {
                     cost[next] = tentative
