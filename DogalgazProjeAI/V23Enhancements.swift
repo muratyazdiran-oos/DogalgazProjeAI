@@ -425,8 +425,18 @@ struct Route3DPlannerView: View {
                             }
                             raw.materialSummary=HydraulicCalculator.estimateMaterialSummary(raw)
                             project.analysis=raw
+                            if project.ruleProfile?.engineerVerified == true {
+                                let sizing = PipeDiameterAdvisor.suggestions(for: project)
+                                if !sizing.isEmpty {
+                                    project = PipeDiameterAdvisor.applying(sizing, to: project)
+                                    message = "3B güzergâh eklendi; hidrolik ağ yeniden hesaplandı ve çap önerileri uygulandı. Mühendis kontrolü bekliyor."
+                                } else {
+                                    message = "3B güzergâh eklendi; mevcut mühendislik limitlerinde ek çap değişikliği gerekmedi."
+                                }
+                            } else {
+                                message="3B güzergâh taslak boru olarak eklendi; doğrulanmış kural profili olmadığı için otomatik çap uygulanmadı."
+                            }
                             onSave(project)
-                            message="3B güzergâh taslak boru olarak eklendi; mühendis kontrolü bekliyor."
                         }
                     }
                 }
@@ -439,6 +449,43 @@ struct Route3DPlannerView: View {
 }
 
 extension GasProject {
+    var approvalEvidenceBlockingReasons: [String] {
+        var reasons: [String] = []
+        let cloud = cloudArtifacts ?? []
+        for record in fieldChecklist?.records ?? [] {
+            guard let fileName = record.evidenceFileName else { continue }
+            let localURL = FieldEvidenceStore.url(projectID: id, fileName: fileName)
+            let localExists = localURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+            if localExists {
+                if let expected = record.evidenceSHA256,
+                   FieldEvidenceStore.verify(projectID: id, fileName: fileName, expectedSHA256: expected) == false {
+                    reasons.append("saha kanıtı SHA-256 doğrulaması başarısız: \(record.kind.title)")
+                }
+            } else if let expected = record.evidenceSHA256 {
+                if !cloud.contains(where: { $0.sha256.caseInsensitiveCompare(expected) == .orderedSame }) {
+                    reasons.append("saha kanıtı yerelde veya bulutta bulunamadı: \(record.kind.title)")
+                }
+            } else {
+                reasons.append("saha kanıtı dosyası bulunamadı: \(record.kind.title)")
+            }
+        }
+        if let ar = arCaptureArtifact {
+            let dir = arCaptureDirectory
+            let names = [ar.videoFileName, ar.trajectoryFileName] + (ar.depthFileName.map { [$0] } ?? [])
+            for name in names {
+                let local = dir.appendingPathComponent(name)
+                if !FileManager.default.fileExists(atPath: local.path) &&
+                    !cloud.contains(where: { $0.fileName == name }) {
+                    reasons.append("AR kanıtı yerelde veya bulutta bulunamadı: \(name)")
+                }
+            }
+        }
+        if let alignment = arRoomAlignment, !alignment.calibrationIsAcceptable {
+            reasons.append("AR ↔ RoomPlan kalibrasyon kalitesi yetersiz")
+        }
+        return reasons
+    }
+
     var evidenceManifestForApproval: [String] {
         var hashes = Set<String>()
         for record in fieldChecklist?.records ?? [] {
