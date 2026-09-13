@@ -19,6 +19,19 @@ jobs:
       - name: Install backend dependencies
         run: npm install --prefix backend --ignore-scripts --no-audit --no-fund
       - run: node --check backend/server.js
+      - name: Backend runtime smoke test
+        run: |
+          cd backend
+          GEMINI_API_KEY=ci-placeholder APP_API_TOKEN=ci-placeholder TEAM_AUTH_SECRET= NODE_ENV=test PORT=18080 node server.js > /tmp/dogalgaz-backend.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:18080/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/dogalgaz-backend.log
+          cat /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
       - name: Import backend dependencies
         run: cd backend && node --input-type=module -e "await Promise.all([import('@aws-sdk/client-s3'),import('@aws-sdk/s3-request-presigner'),import('@google/genai'),import('express'),import('pg')])"
       - run: python3 scripts/quality-gates-v24.py
