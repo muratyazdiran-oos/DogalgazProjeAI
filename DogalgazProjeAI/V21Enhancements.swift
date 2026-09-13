@@ -481,8 +481,8 @@ enum ARWorldProjection {
         validDepths.sort()
         let z = validDepths[validDepths.count/2]
 
-        let imageWidth = Float(pose.imageWidth ?? depth.sourceWidth)
-        let imageHeight = Float(pose.imageHeight ?? depth.sourceHeight)
+        let imageWidth = Float(pose.imageWidth ?? nearbyDepths[0].sourceWidth)
+        let imageHeight = Float(pose.imageHeight ?? nearbyDepths[0].sourceHeight)
         let u = Float(centerPoint.x) * imageWidth
         let v = Float(centerPoint.y) * imageHeight
         let fx = pose.intrinsics[0], fy = pose.intrinsics[4], cx = pose.intrinsics[6], cy = pose.intrinsics[7]
