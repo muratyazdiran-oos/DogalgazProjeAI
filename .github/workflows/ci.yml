@@ -20,9 +20,15 @@ jobs:
         run: npm install --prefix backend --ignore-scripts --no-audit --no-fund
       - run: node --check backend/server.js
       - name: Backend runtime smoke test
+        env:
+          GEMINI_API_KEY: ci-placeholder
+          APP_API_TOKEN: ci-placeholder
+          TEAM_AUTH_SECRET: ""
+          NODE_ENV: test
+          PORT: "18080"
         run: |
           cd backend
-          GEMINI_API_KEY=ci-placeholder APP_API_TOKEN=ci-placeholder TEAM_AUTH_SECRET= NODE_ENV=test PORT=18080 node server.js > /tmp/dogalgaz-backend.log 2>&1 &
+          node server.js > /tmp/dogalgaz-backend.log 2>&1 &
           PID=$!
           trap 'kill $PID 2>/dev/null || true' EXIT
           for i in {1..30}; do
