@@ -163,7 +163,8 @@ enum RoomScanConverter {
             centerZ: Double(t.columns.3.z),
             widthMeters: Double(surface.dimensions.x),
             heightMeters: Double(surface.dimensions.y),
-            yawRadians: Double(atan2(t.columns.0.z, t.columns.0.x))
+            yawRadians: Double(atan2(t.columns.0.z, t.columns.0.x)),
+            bottomMeters: max(0, Double(t.columns.3.y) - Double(surface.dimensions.y) / 2)
         )
     }
 
