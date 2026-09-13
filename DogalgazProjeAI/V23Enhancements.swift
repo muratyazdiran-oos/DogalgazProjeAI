@@ -337,7 +337,12 @@ enum ObstacleAwareRouter3D {
                 let wallPenalty = min(2.0, max(0, wallDistance - 0.18) * 2.5)
                 let verticalPenalty = verticalMove ? 3.5 : 0.0
                 let ceilingPenalty = np.elevationM > maxY - 0.15 ? 0.8 : 0.0
-                let stepCost = 1.0 + wallPenalty + verticalPenalty + ceilingPenalty
+                var bendPenalty = 0.0
+                if let prev = came[current] {
+                    let previousMove = (current.x-prev.x, current.z-prev.z, current.y-prev.y)
+                    if previousMove != m { bendPenalty = 0.85 }
+                }
+                let stepCost = 1.0 + wallPenalty + verticalPenalty + ceilingPenalty + bendPenalty
                 let tentative = (cost[current] ?? .infinity) + stepCost
                 if tentative < (cost[next] ?? .infinity) {
                     cost[next] = tentative
