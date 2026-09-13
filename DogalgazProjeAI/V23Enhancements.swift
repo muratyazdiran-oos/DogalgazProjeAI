@@ -462,7 +462,11 @@ extension GasProject {
                     reasons.append("saha kanıtı SHA-256 doğrulaması başarısız: \(record.kind.title)")
                 }
             } else if let expected = record.evidenceSHA256 {
-                if !cloud.contains(where: { $0.sha256.caseInsensitiveCompare(expected) == .orderedSame && $0.recentlyVerified }) {
+                let verifiedCloudMatch = cloud.contains { artifact in
+                    let sameHash = artifact.sha256.caseInsensitiveCompare(expected) == ComparisonResult.orderedSame
+                    return sameHash && artifact.recentlyVerified
+                }
+                if !verifiedCloudMatch {
                     reasons.append("saha kanıtı yerelde yok; bulut kopyası son 24 saatte doğrulanmadı: \(record.kind.title)")
                 }
             } else {
