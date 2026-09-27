@@ -89,7 +89,10 @@ workflows:
       - name: Set unique build number
         script: |
           cd "$CM_BUILD_DIR"
-          agvtool new-version -all "$CM_BUILD_NUMBER"
+          BUILD_NUMBER=$((1000 + CM_BUILD_NUMBER))
+          echo "Setting CURRENT_PROJECT_VERSION to $BUILD_NUMBER"
+          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $BUILD_NUMBER;/g" "$XCODE_PROJECT/project.pbxproj"
+          grep "CURRENT_PROJECT_VERSION" "$XCODE_PROJECT/project.pbxproj"
       - name: Build signed IPA
         script: |
           xcode-project build-ipa \
