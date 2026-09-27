@@ -10,7 +10,7 @@ struct APISettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            ZStack {\n                GasUI.background.ignoresSafeArea()\n                Form {
                 Section("AI bağlantısı") {
                     TextField("https://api.ornek.com", text: $baseURL)
                         .textInputAutocapitalization(.never)
@@ -36,7 +36,7 @@ struct APISettingsView: View {
                     Section { Text(message).foregroundStyle(.secondary) }
                 }
             }
-            .navigationTitle("AI Ayarları")
+                }\n                .scrollContentBackground(.hidden)\n                .background(Color.clear)\n            }\n            .preferredColorScheme(.dark)\n            .tint(GasUI.blue)\n            .navigationTitle("AI Ayarları")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { dismiss() } }
