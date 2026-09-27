@@ -50,6 +50,14 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 120
 
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
     integrations:
       app_store_connect: Codemagic
 
@@ -64,6 +72,18 @@ workflows:
         BUNDLE_ID: "com.murat.dogalgazprojeai"
 
     scripts:
+      - name: Verify release build without signing
+        script: |
+          set -o pipefail
+          xcodebuild \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build \
+            | tee /tmp/xcodebuild-release.log
       - name: Apply Codemagic signing profiles
         script: xcode-project use-profiles
       - name: Set unique build number
